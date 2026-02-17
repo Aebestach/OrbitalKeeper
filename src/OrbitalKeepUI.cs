@@ -45,6 +45,8 @@ namespace OrbitalKeeper
         private string inputInterval = "3600";
         private float toleranceSlider = 5f;
         private float fontSizeSlider;
+        private bool lastLowPeWarning;
+        private bool needsLayoutRecalc;
 
         // --- Tracking station selection ---
         private Vessel trackingStationVessel;
@@ -194,6 +196,12 @@ namespace OrbitalKeeper
 
             GUI.skin = HighLogic.Skin;
             RebuildStylesIfNeeded();
+
+            if (needsLayoutRecalc)
+            {
+                windowRect.height = 0;
+                needsLayoutRecalc = false;
+            }
 
             windowRect = GUILayout.Window(WINDOW_ID, windowRect, DrawMainWindow,
                 Loc.WindowTitle, _windowStyle, GUILayout.MinWidth(GetMainMinWidth()));
@@ -427,16 +435,23 @@ namespace OrbitalKeeper
             GUILayout.EndHorizontal();
 
             // Safety warning if target periapsis is below atmosphere
+            bool showLowPeWarning = false;
             if (targetVessel != null && targetVessel.orbit.referenceBody.atmosphere)
             {
                 double atmDepth = targetVessel.orbit.referenceBody.atmosphereDepth;
                 if (editData.TargetPeriapsis < atmDepth + OrbitalKeepSettings.MinSafeAltitudeMargin)
                 {
+                    showLowPeWarning = true;
                     string safeAlt = FormatAltitude(atmDepth + OrbitalKeepSettings.MinSafeAltitudeMargin);
                     GUILayout.Label(
                         $"<color=red>{Loc.Format(Loc.WarningLowPe, safeAlt)}</color>",
                         _richStyle);
                 }
+            }
+            if (showLowPeWarning != lastLowPeWarning)
+            {
+                needsLayoutRecalc = true;
+                lastLowPeWarning = showLowPeWarning;
             }
         }
 

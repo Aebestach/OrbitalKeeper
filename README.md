@@ -1,6 +1,15 @@
 # Orbital Keeper
 
+<div align="center">
+
+<img src="https://imgur.com/ZTXKrah.jpg" alt="Banner"/>
+
+[![License](https://img.shields.io/github/license/Aebestach/OrbitalKeeper)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/Aebestach/OrbitalKeeper)](https://github.com/Aebestach/OrbitalKeeper/releases)
+
 [English](README.md) | [中文](README_CN.md)
+
+</div>
 
 ---
 
@@ -9,6 +18,10 @@
 **Orbital Keeper** is a **Kerbal Space Program (KSP)** mod that keeps orbits stable by automatically performing orbit corrections to counter decay-driven orbital lowering.
 
 Automatic station-keeping runs for **unloaded** vessels in the background. Loaded vessels can be corrected manually from the UI.
+
+<div align="center">
+    <img src="https://imgur.com/OgDURAI.jpg" alt="UI Screenshot" width="1000" />
+</div>
 
 ## ✨ Features
 
