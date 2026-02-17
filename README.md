@@ -22,6 +22,7 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 *   **🔋 Resource-aware corrections**
     *   Consumes propellant and Electric Charge based on required delta-v.
     *   Warns when no eligible engine or insufficient resources are available.
+    *   Unloaded vessels do not model resource connectivity; blockages are ignored.
 *   **📋 Vessel overview**
     *   Track multiple vessels and see status, target orbit, and total delta-v spent.
 *   **🛡️ Safety limits**
