@@ -27,11 +27,6 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 *   **🛡️ Safety limits**
     *   Caps maximum correction delta-v and warns if target periapsis is too low.
 
-## 🛠️ Dependencies
-
-*   **Kerbal Space Program**
-*   No external mod dependencies required.
-
 ## 🧩 Compatibility
 
 *   ❌ **Principia** : Not supported.
