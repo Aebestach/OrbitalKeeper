@@ -208,6 +208,7 @@ namespace OrbitalKeeper
         private void DrawMainWindow(int id)
         {
             GUILayout.BeginVertical();
+            GUILayout.Space(6);
 
             // --- Vessel selection info ---
             if (targetVessel == null)
@@ -472,6 +473,7 @@ namespace OrbitalKeeper
         private void DrawFleetWindow(int id)
         {
             GUILayout.BeginVertical();
+            GUILayout.Space(6);
 
             if (StationKeepScenario.Instance == null)
             {
@@ -541,6 +543,19 @@ namespace OrbitalKeeper
                     data.TotalDeltaVSpent.ToString("F1")), _labelStyle);
 
                 GUILayout.EndVertical();
+                Rect entryRect = GUILayoutUtility.GetLastRect();
+                if (GUI.Button(entryRect, GUIContent.none, GUIStyle.none))
+                {
+                    if (HighLogic.LoadedScene == GameScenes.TRACKSTATION && entry.Vessel != null)
+                    {
+                        trackingStationVessel = entry.Vessel;
+                        if (PlanetariumCamera.fetch != null && entry.Vessel.mapObject != null)
+                        {
+                            PlanetariumCamera.fetch.SetTarget(entry.Vessel.mapObject);
+                        }
+                        RefreshVessel();
+                    }
+                }
             }
 
             GUILayout.EndScrollView();
@@ -570,7 +585,8 @@ namespace OrbitalKeeper
                 {
                     Data = data,
                     Name = vesselName,
-                    IsActive = isActive
+                    IsActive = isActive,
+                    Vessel = v
                 });
             }
             return entries;
@@ -631,6 +647,7 @@ namespace OrbitalKeeper
             public VesselKeepData Data;
             public string Name;
             public bool IsActive;
+            public Vessel Vessel;
         }
 
         private enum DebrisVisibility
@@ -812,7 +829,7 @@ namespace OrbitalKeeper
             _labelStyle = new GUIStyle(GUI.skin.label) { fontSize = size };
             _boldStyle = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = FontStyle.Bold };
             _richStyle = new GUIStyle(GUI.skin.label) { fontSize = size, richText = true };
-            _buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = size };
+            _buttonStyle = new GUIStyle(GUI.skin.button);
             _toggleStyle = new GUIStyle(GUI.skin.toggle) { fontSize = size };
             _textFieldStyle = new GUIStyle(GUI.skin.textField) { fontSize = size };
             _boxStyle = new GUIStyle(GUI.skin.box) { fontSize = size };
