@@ -8,7 +8,7 @@
 
 **Orbital Keeper** is a **Kerbal Space Program (KSP)** mod that keeps orbits stable by automatically performing orbit corrections to counter decay-driven orbital lowering.
 
-Automatic station-keeping runs for **unloaded (on-rails)** vessels in the background. Loaded vessels can be corrected manually from the UI.
+Automatic station-keeping runs for **unloaded** vessels in the background. Loaded vessels can be corrected manually from the UI.
 
 ## ✨ Features
 
