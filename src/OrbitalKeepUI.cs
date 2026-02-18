@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using KSP.UI.Screens;
+using KSP.Localization;
 
 namespace OrbitalKeeper
 {
@@ -25,6 +26,10 @@ namespace OrbitalKeeper
         private double lastFleetPopulateTime = -1;
         private List<FleetEntry> cachedFleetEntries = new List<FleetEntry>();
         private int cachedFilteredCount;
+        private List<CelestialBody> cachedBodyFilterBodies = new List<CelestialBody>();
+        private string[] cachedBodyFilterOptions = Array.Empty<string>();
+        private int bodyFilterIndex;
+        private int lastBodyFilterIndex = -1;
 
         private const int WINDOW_ID = 0x4F4B_0001; // "OK" prefix
         private const int FLEET_WINDOW_ID = 0x4F4B_0002;
@@ -500,6 +505,9 @@ namespace OrbitalKeeper
                 return;
             }
 
+            DrawBodyFilter();
+            GUILayout.Space(2);
+
             GUILayout.BeginHorizontal();
             debrisVisibility = DrawDebrisVisibilityToggle(debrisVisibility);
             GUILayout.FlexibleSpace();
@@ -578,18 +586,20 @@ namespace OrbitalKeeper
             double now = Planetarium.GetUniversalTime();
             if (lastFleetPopulateTime < 0 ||
                 now - lastFleetPopulateTime > 2.0 ||
-                lastDebrisVisibility != visibility)
+                lastDebrisVisibility != visibility ||
+                lastBodyFilterIndex != bodyFilterIndex)
             {
                 EnsureFleetDataPopulated(visibility);
-                cachedFleetEntries = BuildFleetEntries(StationKeepScenario.Instance.GetAllVesselData(), visibility);
+                cachedFleetEntries = BuildFleetEntries(StationKeepScenario.Instance.GetAllVesselData(), visibility, GetSelectedBody());
                 cachedFleetEntries.Sort(CompareFleetEntries);
                 cachedFilteredCount = cachedFleetEntries.Count;
                 lastFleetPopulateTime = now;
                 lastDebrisVisibility = visibility;
+                lastBodyFilterIndex = bodyFilterIndex;
             }
         }
 
-        private List<FleetEntry> BuildFleetEntries(IEnumerable<VesselKeepData> allData, DebrisVisibility visibility)
+        private List<FleetEntry> BuildFleetEntries(IEnumerable<VesselKeepData> allData, DebrisVisibility visibility, CelestialBody bodyFilter)
         {
             List<FleetEntry> entries = new List<FleetEntry>();
             Vessel activeVessel = FlightGlobals.ActiveVessel;
@@ -606,6 +616,11 @@ namespace OrbitalKeeper
                     continue;
                 if (visibility == DebrisVisibility.Only && (v == null || v.vesselType != VesselType.Debris))
                     continue;
+                if (bodyFilter != null)
+                {
+                    if (v == null || v.orbit == null || v.orbit.referenceBody != bodyFilter)
+                        continue;
+                }
 
                 string vesselName = v != null
                     ? v.vesselName
@@ -619,6 +634,59 @@ namespace OrbitalKeeper
                 });
             }
             return entries;
+        }
+
+        private void DrawBodyFilter()
+        {
+            RefreshBodyFilterOptionsIfNeeded();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Loc.FleetBodyFilter, _labelStyle, GUILayout.Width(GetLabelWidth()));
+            int columnCount = GetBodyFilterColumnCount();
+            int newIndex = GUILayout.SelectionGrid(bodyFilterIndex, cachedBodyFilterOptions, columnCount, _buttonStyle);
+            if (newIndex != bodyFilterIndex)
+            {
+                bodyFilterIndex = newIndex;
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        private void RefreshBodyFilterOptionsIfNeeded()
+        {
+            if (FlightGlobals.Bodies == null || FlightGlobals.Bodies.Count == 0)
+            {
+                cachedBodyFilterBodies.Clear();
+                cachedBodyFilterOptions = new[] { Loc.FleetBodyAll };
+                bodyFilterIndex = Mathf.Clamp(bodyFilterIndex, 0, cachedBodyFilterOptions.Length - 1);
+                return;
+            }
+
+            if (cachedBodyFilterBodies.Count == FlightGlobals.Bodies.Count && cachedBodyFilterOptions.Length > 0)
+                return;
+
+            cachedBodyFilterBodies = new List<CelestialBody>(FlightGlobals.Bodies);
+            List<string> options = new List<string>(cachedBodyFilterBodies.Count + 1);
+            options.Add(Loc.FleetBodyAll);
+            foreach (CelestialBody body in cachedBodyFilterBodies)
+            {
+                string name = body.bodyDisplayName;
+                if (!string.IsNullOrEmpty(name) && name.StartsWith("#"))
+                    name = Localizer.Format(name);
+                if (string.IsNullOrEmpty(name))
+                    name = body.bodyName;
+                options.Add(name);
+            }
+            cachedBodyFilterOptions = options.ToArray();
+            bodyFilterIndex = Mathf.Clamp(bodyFilterIndex, 0, cachedBodyFilterOptions.Length - 1);
+        }
+
+        private CelestialBody GetSelectedBody()
+        {
+            if (bodyFilterIndex <= 0)
+                return null;
+            int index = bodyFilterIndex - 1;
+            if (index < 0 || index >= cachedBodyFilterBodies.Count)
+                return null;
+            return cachedBodyFilterBodies[index];
         }
 
         private Dictionary<Guid, Vessel> BuildVesselIndex()
@@ -845,6 +913,14 @@ namespace OrbitalKeeper
         private static float GetFleetStatusWidth()
         {
             return Mathf.Round(80f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+        }
+
+        private static int GetBodyFilterColumnCount()
+        {
+            float minWidth = GetFleetMinWidth();
+            float buttonWidth = Mathf.Round(90f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            int columns = Mathf.FloorToInt(Mathf.Max(1f, minWidth / buttonWidth));
+            return Mathf.Clamp(columns, 2, 4);
         }
 
         private static string FormatTime(double seconds)
