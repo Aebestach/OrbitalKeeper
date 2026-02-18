@@ -1,4 +1,4 @@
-# Orbital Keeper
+# Orbital Keeper - Station Keeping
 
 <div align="center">
 
@@ -15,7 +15,7 @@
 
 ## 📖 简介
 
-**Orbital Keeper** 是一款用于 **Kerbal Space Program (KSP)** 的轨道维持模组，通过自动执行轨道修正，抵消由轨道衰减带来的影响。
+**轨道守护者** 是一款用于 **Kerbal Space Program (KSP)** 的轨道维持模组，通过自动执行轨道修正，抵消由轨道衰减带来的影响。
 
 自动轨道维持仅对**未加载**的载具生效；正在使用的载具可通过 UI 进行手动修正。
 

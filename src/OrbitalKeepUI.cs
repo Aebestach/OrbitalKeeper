@@ -23,6 +23,8 @@ namespace OrbitalKeeper
         private DebrisVisibility debrisVisibility = DebrisVisibility.All;
         private DebrisVisibility lastDebrisVisibility = DebrisVisibility.All;
         private double lastFleetPopulateTime = -1;
+        private List<FleetEntry> cachedFleetEntries = new List<FleetEntry>();
+        private int cachedFilteredCount;
 
         private const int WINDOW_ID = 0x4F4B_0001; // "OK" prefix
         private const int FLEET_WINDOW_ID = 0x4F4B_0002;
@@ -499,21 +501,13 @@ namespace OrbitalKeeper
             }
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label(
-                Loc.Format(Loc.TrackedVessels, StationKeepScenario.Instance.TrackedVesselCount.ToString()),
-                _boldStyle);
-            GUILayout.FlexibleSpace();
             debrisVisibility = DrawDebrisVisibilityToggle(debrisVisibility);
+            GUILayout.FlexibleSpace();
+            RefreshFleetEntriesIfNeeded(debrisVisibility);
+            GUILayout.Label(
+                Loc.Format(Loc.TrackedVessels, cachedFilteredCount.ToString()),
+                _boldStyle);
             GUILayout.EndHorizontal();
-            double now = Planetarium.GetUniversalTime();
-            if (lastFleetPopulateTime < 0 ||
-                now - lastFleetPopulateTime > 2.0 ||
-                lastDebrisVisibility != debrisVisibility)
-            {
-                EnsureFleetDataPopulated(debrisVisibility);
-                lastFleetPopulateTime = now;
-                lastDebrisVisibility = debrisVisibility;
-            }
             GUILayout.Space(4);
 
             GUIStyle scrollStyle = new GUIStyle(GUI.skin.scrollView);
@@ -521,9 +515,7 @@ namespace OrbitalKeeper
             scrollStyle.padding.right = 0;
             fleetScrollPos = GUILayout.BeginScrollView(fleetScrollPos, false, false, GUI.skin.horizontalScrollbar, GUI.skin.verticalScrollbar, scrollStyle, GUILayout.Height(320));
 
-            List<FleetEntry> entries = BuildFleetEntries(StationKeepScenario.Instance.GetAllVesselData(), debrisVisibility);
-            entries.Sort(CompareFleetEntries);
-            foreach (FleetEntry entry in entries)
+            foreach (FleetEntry entry in cachedFleetEntries)
             {
                 VesselKeepData data = entry.Data;
                 string vesselName = entry.Name;
@@ -578,14 +570,37 @@ namespace OrbitalKeeper
             GUI.DragWindow();
         }
 
+        private void RefreshFleetEntriesIfNeeded(DebrisVisibility visibility)
+        {
+            if (StationKeepScenario.Instance == null)
+                return;
+
+            double now = Planetarium.GetUniversalTime();
+            if (lastFleetPopulateTime < 0 ||
+                now - lastFleetPopulateTime > 2.0 ||
+                lastDebrisVisibility != visibility)
+            {
+                EnsureFleetDataPopulated(visibility);
+                cachedFleetEntries = BuildFleetEntries(StationKeepScenario.Instance.GetAllVesselData(), visibility);
+                cachedFleetEntries.Sort(CompareFleetEntries);
+                cachedFilteredCount = cachedFleetEntries.Count;
+                lastFleetPopulateTime = now;
+                lastDebrisVisibility = visibility;
+            }
+        }
+
         private List<FleetEntry> BuildFleetEntries(IEnumerable<VesselKeepData> allData, DebrisVisibility visibility)
         {
             List<FleetEntry> entries = new List<FleetEntry>();
             Vessel activeVessel = FlightGlobals.ActiveVessel;
+            Dictionary<Guid, Vessel> vesselIndex = BuildVesselIndex();
             foreach (VesselKeepData data in allData)
             {
-                Vessel v = FlightGlobals.FindVessel(data.VesselId);
+                vesselIndex.TryGetValue(data.VesselId, out Vessel v);
                 if (!IsFleetVesselEligible(v))
+                    continue;
+                bool isActive = v != null && activeVessel != null && v == activeVessel;
+                if (!isActive && !IsOrbitOrSuborbit(v))
                     continue;
                 if (visibility == DebrisVisibility.Hide && v != null && v.vesselType == VesselType.Debris)
                     continue;
@@ -595,7 +610,6 @@ namespace OrbitalKeeper
                 string vesselName = v != null
                     ? v.vesselName
                     : Loc.Format(Loc.UnknownVessel, data.VesselId.ToString());
-                bool isActive = v != null && activeVessel != null && v == activeVessel;
                 entries.Add(new FleetEntry
                 {
                     Data = data,
@@ -605,6 +619,20 @@ namespace OrbitalKeeper
                 });
             }
             return entries;
+        }
+
+        private Dictionary<Guid, Vessel> BuildVesselIndex()
+        {
+            Dictionary<Guid, Vessel> index = new Dictionary<Guid, Vessel>();
+            if (FlightGlobals.Vessels == null)
+                return index;
+            foreach (Vessel vessel in FlightGlobals.Vessels)
+            {
+                if (vessel == null)
+                    continue;
+                index[vessel.id] = vessel;
+            }
+            return index;
         }
 
         private DebrisVisibility DrawDebrisVisibilityToggle(DebrisVisibility current)
@@ -627,16 +655,28 @@ namespace OrbitalKeeper
             return true;
         }
 
+        private static bool IsOrbitOrSuborbit(Vessel vessel)
+        {
+            if (vessel == null)
+                return false;
+            return vessel.situation == Vessel.Situations.ORBITING ||
+                   vessel.situation == Vessel.Situations.SUB_ORBITAL;
+        }
+
         private void EnsureFleetDataPopulated(DebrisVisibility visibility)
         {
             if (StationKeepScenario.Instance == null || FlightGlobals.Vessels == null)
                 return;
 
+            Vessel activeVessel = FlightGlobals.ActiveVessel;
             foreach (Vessel vessel in FlightGlobals.Vessels)
             {
                 if (vessel == null || vessel.orbit == null)
                     continue;
                 if (!IsFleetVesselEligible(vessel))
+                    continue;
+                bool isActive = activeVessel != null && vessel == activeVessel;
+                if (!isActive && !IsOrbitOrSuborbit(vessel))
                     continue;
                 if (visibility == DebrisVisibility.Hide && vessel.vesselType == VesselType.Debris)
                     continue;

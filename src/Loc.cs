@@ -14,7 +14,7 @@ namespace OrbitalKeeper
         //  Window Titles
         // ==============================
         public static string WindowTitle = "Orbital Keeper - Station Keeping";
-        public static string FleetWindowTitle = "Fleet Overview";
+        public static string FleetWindowTitle = "Vessel Overview (Selectable)";
 
         // ==============================
         //  General Labels
@@ -42,7 +42,7 @@ namespace OrbitalKeeper
         public static string StatusShortNominal = "OK";
         public static string StatusShortDrifting = "Drifting";
         public static string StatusShortInsufficientRes = "Low Res";
-        public static string StatusShortNoEngine = "No Eng";
+        public static string StatusShortNoEngine = "No Engine";
         public static string StatusShortInvalidOrbit = "Invalid";
         public static string StatusShortAuto = "Auto";
         public static string StatusShortDisabled = "Off";
@@ -98,7 +98,7 @@ namespace OrbitalKeeper
         // ==============================
         //  Footer
         // ==============================
-        public static string FleetOverview = "Fleet Overview";
+        public static string FleetOverview = "Vessel Overview";
         public static string RemoveKeeping = "Remove Station-Keeping";
 
         // ==============================
