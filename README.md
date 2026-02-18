@@ -1,4 +1,4 @@
-# Orbital Keeper
+# Orbital Keeper - Station Keeping
 
 <div align="center">
 
@@ -37,7 +37,7 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
     *   Warns when no eligible engine or insufficient resources are available.
     *   Unloaded vessels do not model resource connectivity; blockages are ignored.
 *   **📋 Vessel overview**
-    *   Track multiple vessels and see status, target orbit, and total delta-v spent.
+    *   View on-orbit/sub-orbit vehicle status, target orbit and accumulated Δv consumption.
 *   **🛡️ Safety limits**
     *   Caps maximum correction delta-v and warns if target periapsis is too low.
 

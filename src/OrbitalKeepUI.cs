@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using KSP.UI.Screens;
+using KSP.Localization;
 
 namespace OrbitalKeeper
 {
@@ -23,6 +24,12 @@ namespace OrbitalKeeper
         private DebrisVisibility debrisVisibility = DebrisVisibility.All;
         private DebrisVisibility lastDebrisVisibility = DebrisVisibility.All;
         private double lastFleetPopulateTime = -1;
+        private List<FleetEntry> cachedFleetEntries = new List<FleetEntry>();
+        private int cachedFilteredCount;
+        private List<CelestialBody> cachedBodyFilterBodies = new List<CelestialBody>();
+        private string[] cachedBodyFilterOptions = Array.Empty<string>();
+        private int bodyFilterIndex;
+        private int lastBodyFilterIndex = -1;
 
         private const int WINDOW_ID = 0x4F4B_0001; // "OK" prefix
         private const int FLEET_WINDOW_ID = 0x4F4B_0002;
@@ -498,22 +505,17 @@ namespace OrbitalKeeper
                 return;
             }
 
+            DrawBodyFilter();
+            GUILayout.Space(2);
+
             GUILayout.BeginHorizontal();
-            GUILayout.Label(
-                Loc.Format(Loc.TrackedVessels, StationKeepScenario.Instance.TrackedVesselCount.ToString()),
-                _boldStyle);
-            GUILayout.FlexibleSpace();
             debrisVisibility = DrawDebrisVisibilityToggle(debrisVisibility);
+            GUILayout.FlexibleSpace();
+            RefreshFleetEntriesIfNeeded(debrisVisibility);
+            GUILayout.Label(
+                Loc.Format(Loc.TrackedVessels, cachedFilteredCount.ToString()),
+                _boldStyle);
             GUILayout.EndHorizontal();
-            double now = Planetarium.GetUniversalTime();
-            if (lastFleetPopulateTime < 0 ||
-                now - lastFleetPopulateTime > 2.0 ||
-                lastDebrisVisibility != debrisVisibility)
-            {
-                EnsureFleetDataPopulated(debrisVisibility);
-                lastFleetPopulateTime = now;
-                lastDebrisVisibility = debrisVisibility;
-            }
             GUILayout.Space(4);
 
             GUIStyle scrollStyle = new GUIStyle(GUI.skin.scrollView);
@@ -521,9 +523,7 @@ namespace OrbitalKeeper
             scrollStyle.padding.right = 0;
             fleetScrollPos = GUILayout.BeginScrollView(fleetScrollPos, false, false, GUI.skin.horizontalScrollbar, GUI.skin.verticalScrollbar, scrollStyle, GUILayout.Height(320));
 
-            List<FleetEntry> entries = BuildFleetEntries(StationKeepScenario.Instance.GetAllVesselData(), debrisVisibility);
-            entries.Sort(CompareFleetEntries);
-            foreach (FleetEntry entry in entries)
+            foreach (FleetEntry entry in cachedFleetEntries)
             {
                 VesselKeepData data = entry.Data;
                 string vesselName = entry.Name;
@@ -578,24 +578,53 @@ namespace OrbitalKeeper
             GUI.DragWindow();
         }
 
-        private List<FleetEntry> BuildFleetEntries(IEnumerable<VesselKeepData> allData, DebrisVisibility visibility)
+        private void RefreshFleetEntriesIfNeeded(DebrisVisibility visibility)
+        {
+            if (StationKeepScenario.Instance == null)
+                return;
+
+            double now = Planetarium.GetUniversalTime();
+            if (lastFleetPopulateTime < 0 ||
+                now - lastFleetPopulateTime > 2.0 ||
+                lastDebrisVisibility != visibility ||
+                lastBodyFilterIndex != bodyFilterIndex)
+            {
+                EnsureFleetDataPopulated(visibility);
+                cachedFleetEntries = BuildFleetEntries(StationKeepScenario.Instance.GetAllVesselData(), visibility, GetSelectedBody());
+                cachedFleetEntries.Sort(CompareFleetEntries);
+                cachedFilteredCount = cachedFleetEntries.Count;
+                lastFleetPopulateTime = now;
+                lastDebrisVisibility = visibility;
+                lastBodyFilterIndex = bodyFilterIndex;
+            }
+        }
+
+        private List<FleetEntry> BuildFleetEntries(IEnumerable<VesselKeepData> allData, DebrisVisibility visibility, CelestialBody bodyFilter)
         {
             List<FleetEntry> entries = new List<FleetEntry>();
             Vessel activeVessel = FlightGlobals.ActiveVessel;
+            Dictionary<Guid, Vessel> vesselIndex = BuildVesselIndex();
             foreach (VesselKeepData data in allData)
             {
-                Vessel v = FlightGlobals.FindVessel(data.VesselId);
+                vesselIndex.TryGetValue(data.VesselId, out Vessel v);
                 if (!IsFleetVesselEligible(v))
+                    continue;
+                bool isActive = v != null && activeVessel != null && v == activeVessel;
+                if (!isActive && !IsOrbitOrSuborbit(v))
                     continue;
                 if (visibility == DebrisVisibility.Hide && v != null && v.vesselType == VesselType.Debris)
                     continue;
                 if (visibility == DebrisVisibility.Only && (v == null || v.vesselType != VesselType.Debris))
                     continue;
+                if (bodyFilter != null)
+                {
+                    if (v == null || v.orbit == null || v.orbit.referenceBody != bodyFilter)
+                        continue;
+                }
 
                 string vesselName = v != null
                     ? v.vesselName
                     : Loc.Format(Loc.UnknownVessel, data.VesselId.ToString());
-                bool isActive = v != null && activeVessel != null && v == activeVessel;
                 entries.Add(new FleetEntry
                 {
                     Data = data,
@@ -605,6 +634,94 @@ namespace OrbitalKeeper
                 });
             }
             return entries;
+        }
+
+        private void DrawBodyFilter()
+        {
+            RefreshBodyFilterOptionsIfNeeded();
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(Loc.FleetBodyFilter, _labelStyle, GUILayout.Width(GetLabelWidth()));
+            int optionCount = cachedBodyFilterOptions.Length;
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("<", _buttonStyle, GUILayout.ExpandWidth(false)))
+            {
+                if (optionCount > 0)
+                {
+                    bodyFilterIndex = (bodyFilterIndex - 1 + optionCount) % optionCount;
+                }
+            }
+            GUILayout.Label(GetCurrentBodyFilterLabel(), _labelStyle, GUILayout.ExpandWidth(false));
+            if (GUILayout.Button(">", _buttonStyle, GUILayout.ExpandWidth(false)))
+            {
+                if (optionCount > 0)
+                {
+                    bodyFilterIndex = (bodyFilterIndex + 1) % optionCount;
+                }
+            }
+            GUILayout.EndHorizontal();
+        }
+
+        private void RefreshBodyFilterOptionsIfNeeded()
+        {
+            if (FlightGlobals.Bodies == null || FlightGlobals.Bodies.Count == 0)
+            {
+                cachedBodyFilterBodies.Clear();
+                cachedBodyFilterOptions = new[] { Loc.FleetBodyAll };
+                bodyFilterIndex = Mathf.Clamp(bodyFilterIndex, 0, cachedBodyFilterOptions.Length - 1);
+                return;
+            }
+
+            if (cachedBodyFilterBodies.Count == FlightGlobals.Bodies.Count && cachedBodyFilterOptions.Length > 0)
+                return;
+
+            cachedBodyFilterBodies = new List<CelestialBody>(FlightGlobals.Bodies);
+            List<string> options = new List<string>(cachedBodyFilterBodies.Count + 1);
+            options.Add(Loc.FleetBodyAll);
+            foreach (CelestialBody body in cachedBodyFilterBodies)
+            {
+                string name = body.bodyDisplayName;
+                if (!string.IsNullOrEmpty(name) && name.StartsWith("#"))
+                    name = Localizer.Format(name);
+                if (!string.IsNullOrEmpty(name))
+                    name = name.Replace("^N", string.Empty).Trim();
+                if (string.IsNullOrEmpty(name))
+                    name = body.bodyName;
+                options.Add(name);
+            }
+            cachedBodyFilterOptions = options.ToArray();
+            bodyFilterIndex = Mathf.Clamp(bodyFilterIndex, 0, cachedBodyFilterOptions.Length - 1);
+        }
+
+        private CelestialBody GetSelectedBody()
+        {
+            if (bodyFilterIndex <= 0)
+                return null;
+            int index = bodyFilterIndex - 1;
+            if (index < 0 || index >= cachedBodyFilterBodies.Count)
+                return null;
+            return cachedBodyFilterBodies[index];
+        }
+
+        private string GetCurrentBodyFilterLabel()
+        {
+            if (cachedBodyFilterOptions == null || cachedBodyFilterOptions.Length == 0)
+                return Loc.Unit_NA;
+            int index = Mathf.Clamp(bodyFilterIndex, 0, cachedBodyFilterOptions.Length - 1);
+            return cachedBodyFilterOptions[index];
+        }
+
+        private Dictionary<Guid, Vessel> BuildVesselIndex()
+        {
+            Dictionary<Guid, Vessel> index = new Dictionary<Guid, Vessel>();
+            if (FlightGlobals.Vessels == null)
+                return index;
+            foreach (Vessel vessel in FlightGlobals.Vessels)
+            {
+                if (vessel == null)
+                    continue;
+                index[vessel.id] = vessel;
+            }
+            return index;
         }
 
         private DebrisVisibility DrawDebrisVisibilityToggle(DebrisVisibility current)
@@ -627,16 +744,28 @@ namespace OrbitalKeeper
             return true;
         }
 
+        private static bool IsOrbitOrSuborbit(Vessel vessel)
+        {
+            if (vessel == null)
+                return false;
+            return vessel.situation == Vessel.Situations.ORBITING ||
+                   vessel.situation == Vessel.Situations.SUB_ORBITAL;
+        }
+
         private void EnsureFleetDataPopulated(DebrisVisibility visibility)
         {
             if (StationKeepScenario.Instance == null || FlightGlobals.Vessels == null)
                 return;
 
+            Vessel activeVessel = FlightGlobals.ActiveVessel;
             foreach (Vessel vessel in FlightGlobals.Vessels)
             {
                 if (vessel == null || vessel.orbit == null)
                     continue;
                 if (!IsFleetVesselEligible(vessel))
+                    continue;
+                bool isActive = activeVessel != null && vessel == activeVessel;
+                if (!isActive && !IsOrbitOrSuborbit(vessel))
                     continue;
                 if (visibility == DebrisVisibility.Hide && vessel.vesselType == VesselType.Debris)
                     continue;
@@ -806,6 +935,7 @@ namespace OrbitalKeeper
         {
             return Mathf.Round(80f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
         }
+
 
         private static string FormatTime(double seconds)
         {

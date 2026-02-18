@@ -14,7 +14,7 @@ namespace OrbitalKeeper
         //  Window Titles
         // ==============================
         public static string WindowTitle = "Orbital Keeper - Station Keeping";
-        public static string FleetWindowTitle = "Fleet Overview";
+        public static string FleetWindowTitle = "Vessel Overview (Selectable)";
 
         // ==============================
         //  General Labels
@@ -42,7 +42,7 @@ namespace OrbitalKeeper
         public static string StatusShortNominal = "OK";
         public static string StatusShortDrifting = "Drifting";
         public static string StatusShortInsufficientRes = "Low Res";
-        public static string StatusShortNoEngine = "No Eng";
+        public static string StatusShortNoEngine = "No Engine";
         public static string StatusShortInvalidOrbit = "Invalid";
         public static string StatusShortAuto = "Auto";
         public static string StatusShortDisabled = "Off";
@@ -98,13 +98,15 @@ namespace OrbitalKeeper
         // ==============================
         //  Footer
         // ==============================
-        public static string FleetOverview = "Fleet Overview";
+        public static string FleetOverview = "Vessel Overview";
         public static string RemoveKeeping = "Remove Station-Keeping";
 
         // ==============================
         //  Fleet View
         // ==============================
         public static string FleetInfoLine = "Ap: <<1>> | Pe: <<2>> | Δv: <<3>>m/s";
+        public static string FleetBodyFilter = "Body:";
+        public static string FleetBodyAll = "All Bodies";
         public static string DebrisOnly = "Debris Only";
         public static string DebrisAll = "All Vessels";
         public static string DebrisHide = "No Debris";
@@ -229,6 +231,8 @@ namespace OrbitalKeeper
 
             // Fleet
             FleetInfoLine = Get("#LOC_OrbKeep_FleetInfoLine", FleetInfoLine);
+            FleetBodyFilter = Get("#LOC_OrbKeep_FleetBodyFilter", FleetBodyFilter);
+            FleetBodyAll = Get("#LOC_OrbKeep_FleetBodyAll", FleetBodyAll);
             DebrisOnly = Get("#LOC_OrbKeep_DebrisOnly", DebrisOnly);
             DebrisAll = Get("#LOC_OrbKeep_DebrisAll", DebrisAll);
             DebrisHide = Get("#LOC_OrbKeep_DebrisHide", DebrisHide);
