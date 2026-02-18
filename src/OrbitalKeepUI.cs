@@ -641,11 +641,22 @@ namespace OrbitalKeeper
             RefreshBodyFilterOptionsIfNeeded();
             GUILayout.BeginHorizontal();
             GUILayout.Label(Loc.FleetBodyFilter, _labelStyle, GUILayout.Width(GetLabelWidth()));
-            int columnCount = GetBodyFilterColumnCount();
-            int newIndex = GUILayout.SelectionGrid(bodyFilterIndex, cachedBodyFilterOptions, columnCount, _buttonStyle);
-            if (newIndex != bodyFilterIndex)
+            int optionCount = cachedBodyFilterOptions.Length;
+            GUILayout.FlexibleSpace();
+            if (GUILayout.Button("<", _buttonStyle, GUILayout.ExpandWidth(false)))
             {
-                bodyFilterIndex = newIndex;
+                if (optionCount > 0)
+                {
+                    bodyFilterIndex = (bodyFilterIndex - 1 + optionCount) % optionCount;
+                }
+            }
+            GUILayout.Label(GetCurrentBodyFilterLabel(), _labelStyle, GUILayout.ExpandWidth(false));
+            if (GUILayout.Button(">", _buttonStyle, GUILayout.ExpandWidth(false)))
+            {
+                if (optionCount > 0)
+                {
+                    bodyFilterIndex = (bodyFilterIndex + 1) % optionCount;
+                }
             }
             GUILayout.EndHorizontal();
         }
@@ -671,6 +682,8 @@ namespace OrbitalKeeper
                 string name = body.bodyDisplayName;
                 if (!string.IsNullOrEmpty(name) && name.StartsWith("#"))
                     name = Localizer.Format(name);
+                if (!string.IsNullOrEmpty(name))
+                    name = name.Replace("^N", string.Empty).Trim();
                 if (string.IsNullOrEmpty(name))
                     name = body.bodyName;
                 options.Add(name);
@@ -687,6 +700,14 @@ namespace OrbitalKeeper
             if (index < 0 || index >= cachedBodyFilterBodies.Count)
                 return null;
             return cachedBodyFilterBodies[index];
+        }
+
+        private string GetCurrentBodyFilterLabel()
+        {
+            if (cachedBodyFilterOptions == null || cachedBodyFilterOptions.Length == 0)
+                return Loc.Unit_NA;
+            int index = Mathf.Clamp(bodyFilterIndex, 0, cachedBodyFilterOptions.Length - 1);
+            return cachedBodyFilterOptions[index];
         }
 
         private Dictionary<Guid, Vessel> BuildVesselIndex()
@@ -915,13 +936,6 @@ namespace OrbitalKeeper
             return Mathf.Round(80f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
         }
 
-        private static int GetBodyFilterColumnCount()
-        {
-            float minWidth = GetFleetMinWidth();
-            float buttonWidth = Mathf.Round(90f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
-            int columns = Mathf.FloorToInt(Mathf.Max(1f, minWidth / buttonWidth));
-            return Mathf.Clamp(columns, 2, 4);
-        }
 
         private static string FormatTime(double seconds)
         {
