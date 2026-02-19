@@ -54,7 +54,8 @@
 
 ### 打开 UI
 
-*   在**飞行场景**或**追踪站**中点击 Orbital Keeper 图标。
+*   在**飞行场景**或**追踪站**中使用界面快捷键（默认 **Alt + O**）。
+*   启用工具栏按钮后，可点击 AppLauncher 的 Orbital Keeper 图标。
 
 ### 配置载具
 
@@ -63,6 +64,11 @@
 *   设置轨道维持选项：
     *   自动维持开关、容差、检查间隔、引擎模式、UI 字体大小。
 *   点击 **应用设置** 保存设置。
+
+### 界面设置
+
+*   调整 UI 字体大小、快捷键按键与修饰键，以及工具栏按钮开关。
+*   每用户界面设置保存在 `GameData/OrbitalKeeper/PluginData/config.xml`。
 
 ### 操作
 
@@ -87,6 +93,7 @@
 | `showCorrectionMessages` | 是否显示修正提示 | `True` |
 | `showResourceWarnings` | 是否显示资源不足警告 | `True` |
 | `messageDuration` | 提示信息持续时间（s） | `5.0` |
+| `enableToolbarButton` | 是否启用 AppLauncher 工具栏按钮 | `False` |
 
 ### 容差说明
 
@@ -101,3 +108,8 @@
 
 *   `IgnitedOnly`：只选择当前已点火的引擎（`EngineIgnited = True`）。
 *   `ActiveNotShutdown`：选择已激活且未手动关闭的引擎；未点火但已分级且未关闭的引擎也可被认为可用。
+
+### 性能提示
+
+*   启用 `enableToolbarButton` 后，在高负载情况下切换到飞行场景可能会出现 10 秒以内、每秒 1 次的卡顿。
+

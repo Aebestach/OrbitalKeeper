@@ -125,6 +125,7 @@ namespace OrbitalKeeper
             node.AddValue("autoEnabled", AutoKeepEnabled);
             node.AddValue("checkInterval", CheckInterval);
             node.AddValue("engineMode", EngineMode.ToString());
+            node.AddValue("lastCheckTime", LastCheckTime);
             node.AddValue("totalDvSpent", TotalDeltaVSpent);
             node.AddValue("totalECSpent", TotalECSpent);
             return node;
@@ -144,6 +145,7 @@ namespace OrbitalKeeper
             data.TargetEccentricity = ParseDouble(node, "targetEcc", 0);
             data.Tolerance = ParseDouble(node, "tolerance", 5.0);
             data.CheckInterval = ParseDouble(node, "checkInterval", 3600.0);
+            data.LastCheckTime = ParseDouble(node, "lastCheckTime", 0.0);
             data.TotalDeltaVSpent = ParseDouble(node, "totalDvSpent", 0);
             data.TotalECSpent = ParseDouble(node, "totalECSpent", 0);
 

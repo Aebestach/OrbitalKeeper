@@ -54,7 +54,8 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 
 ### Open the UI
 
-*   Click the Orbital Keeper icon in the stock AppLauncher while in **Flight** or **Tracking Station**.
+*   Use the GUI hotkey (default **Alt + O**) in **Flight** or **Tracking Station**.
+*   If the toolbar button is enabled, click the Orbital Keeper icon in the stock AppLauncher.
 
 ### Configure a vessel
 
@@ -63,6 +64,11 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 *   Set station-keeping options:
     *   Auto-keep toggle, tolerance, check interval, engine mode, UI font size.
 *   Click **Apply Settings** to save.
+
+### GUI settings
+
+*   Adjust UI font size, hotkey key and modifiers, and toolbar button toggle.
+*   Per-user GUI settings are saved to `GameData/OrbitalKeeper/PluginData/config.xml`.
 
 ### Actions
 
@@ -87,6 +93,7 @@ Global defaults are stored in:
 | `showCorrectionMessages` | Show correction messages | `True` |
 | `showResourceWarnings` | Show resource warnings | `True` |
 | `messageDuration` | Message duration (s) | `5.0` |
+| `enableToolbarButton` | Enable the stock AppLauncher toolbar button | `False` |
 
 ### Tolerance Notes
 
@@ -101,3 +108,7 @@ Global defaults are stored in:
 
 *   `IgnitedOnly`: selects only engines currently ignited (`EngineIgnited = True`).
 *   `ActiveNotShutdown`: selects engines activated and not manually shut down; unignited but staged and not shut down engines are also eligible.
+
+### Performance Note
+
+*   When `enableToolbarButton` is enabled, switching to the Flight scene under heavy load may cause brief stutters once per second for up to 10 seconds.

@@ -14,7 +14,7 @@ namespace OrbitalKeeper
         //  Window Titles
         // ==============================
         public static string WindowTitle = "Orbital Keeper - Station Keeping";
-        public static string FleetWindowTitle = "Vessel Overview (Selectable)";
+        public static string FleetWindowTitle = "Vessel Overview";
 
         // ==============================
         //  General Labels
@@ -79,6 +79,15 @@ namespace OrbitalKeeper
         public static string EngineModeActive = "Active Not Shutdown";
         public static string ApplySettings = "Apply Settings";
         public static string FontSizeLabel = "Font Size: <<1>>";
+        public static string ConfigAutoKeepSettings = "Auto Station-Keeping Settings";
+        public static string ConfigGuiSettings = "GUI Settings";
+        public static string GuiHotkeyLabel = "GUI Hotkey Key";
+        public static string GuiHotkeyModifiers = "Hotkey Modifiers";
+        public static string ModAlt = "Alt";
+        public static string ModCtrl = "Ctrl";
+        public static string ModShift = "Shift";
+        public static string CurrentHotkey = "Current: <<1>>";
+        public static string ToolbarButtonToggle = "Show Toolbar Button (AppLauncher)";
 
         // ==============================
         //  Action Section
@@ -110,6 +119,7 @@ namespace OrbitalKeeper
         public static string DebrisOnly = "Debris Only";
         public static string DebrisAll = "All Vessels";
         public static string DebrisHide = "No Debris";
+        public static string FleetSelectionHint = "Select vessels for settings in Tracking Station only; in Flight scene click Manual Correction.";
 
         // ==============================
         //  Screen Messages
@@ -213,6 +223,15 @@ namespace OrbitalKeeper
             EngineModeActive = Get("#LOC_OrbKeep_EngineModeActive", EngineModeActive);
             ApplySettings = Get("#LOC_OrbKeep_ApplySettings", ApplySettings);
             FontSizeLabel = Get("#LOC_OrbKeep_FontSizeLabel", FontSizeLabel);
+            ConfigAutoKeepSettings = Get("#LOC_OrbKeep_ConfigAutoKeepSettings", ConfigAutoKeepSettings);
+            ConfigGuiSettings = Get("#LOC_OrbKeep_ConfigGuiSettings", ConfigGuiSettings);
+            GuiHotkeyLabel = Get("#LOC_OrbKeep_GuiHotkeyLabel", GuiHotkeyLabel);
+            GuiHotkeyModifiers = Get("#LOC_OrbKeep_GuiHotkeyModifiers", GuiHotkeyModifiers);
+            ModAlt = Get("#LOC_OrbKeep_ModAlt", ModAlt);
+            ModCtrl = Get("#LOC_OrbKeep_ModCtrl", ModCtrl);
+            ModShift = Get("#LOC_OrbKeep_ModShift", ModShift);
+            CurrentHotkey = Get("#LOC_OrbKeep_CurrentHotkey", CurrentHotkey);
+            ToolbarButtonToggle = Get("#LOC_OrbKeep_ToolbarButtonToggle", ToolbarButtonToggle);
 
             // Actions
             SectionActions = Get("#LOC_OrbKeep_SectionActions", SectionActions);
@@ -236,6 +255,7 @@ namespace OrbitalKeeper
             DebrisOnly = Get("#LOC_OrbKeep_DebrisOnly", DebrisOnly);
             DebrisAll = Get("#LOC_OrbKeep_DebrisAll", DebrisAll);
             DebrisHide = Get("#LOC_OrbKeep_DebrisHide", DebrisHide);
+            FleetSelectionHint = Get("#LOC_OrbKeep_FleetSelectionHint", FleetSelectionHint);
 
             // Screen Messages
             SettingsSaved = Get("#LOC_OrbKeep_SettingsSaved", SettingsSaved);

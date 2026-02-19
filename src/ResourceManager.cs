@@ -9,6 +9,28 @@ namespace OrbitalKeeper
     /// </summary>
     public static class ResourceManager
     {
+        private sealed class PartPrefabCacheEntry
+        {
+            public bool Exists;
+            public Part Prefab;
+            public double DryMass;
+        }
+
+        private sealed class UnloadedEngineCandidate
+        {
+            public int ModuleIndex;
+            public double Isp;
+            public double MixtureDensity;
+            public List<PropellantInfo> Propellants;
+        }
+
+        private static readonly Dictionary<string, PartPrefabCacheEntry> PartPrefabCache =
+            new Dictionary<string, PartPrefabCacheEntry>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, PartResourceDefinition> ResourceDefinitionCache =
+            new Dictionary<string, PartResourceDefinition>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, List<UnloadedEngineCandidate>> UnloadedEngineCache =
+            new Dictionary<string, List<UnloadedEngineCandidate>>(StringComparer.Ordinal);
+
         /// <summary>
         /// Result of an engine search on a vessel.
         /// </summary>
@@ -117,73 +139,38 @@ namespace OrbitalKeeper
                 return result;
 
             double bestIsp = -1;
-            ProtoPartSnapshot bestPart = null;
-            ProtoPartModuleSnapshot bestModule = null;
+            UnloadedEngineCandidate bestCandidate = null;
 
             foreach (ProtoPartSnapshot pp in protoVessel.protoPartSnapshots)
             {
-                Part prefab = PartLoader.getPartInfoByName(pp.partName)?.partPrefab;
-                if (prefab == null)
+                List<UnloadedEngineCandidate> candidates = GetUnloadedEngineCandidates(pp.partName);
+                if (candidates.Count == 0)
                     continue;
 
-                // Check each engine module on the prefab
-                int moduleIndex = 0;
-                foreach (PartModule pm in prefab.Modules)
+                foreach (UnloadedEngineCandidate candidate in candidates)
                 {
-                    if (pm is ModuleEngines enginePrefab)
-                    {
-                        // Get the corresponding proto module snapshot
-                        if (moduleIndex < pp.modules.Count)
-                        {
-                            ProtoPartModuleSnapshot protoModule = pp.modules[moduleIndex];
+                    if (candidate.ModuleIndex < 0 || candidate.ModuleIndex >= pp.modules.Count)
+                        continue;
 
-                            if (IsEngineEligibleProto(protoModule, mode))
-                            {
-                                double isp = enginePrefab.atmosphereCurve.Evaluate(0f);
-                                if (isp > bestIsp)
-                                {
-                                    bestIsp = isp;
-                                    bestPart = pp;
-                                    bestModule = protoModule;
-                                }
-                            }
-                        }
+                    ProtoPartModuleSnapshot protoModule = pp.modules[candidate.ModuleIndex];
+                    if (!IsEngineEligibleProto(protoModule, mode))
+                        continue;
+
+                    if (candidate.Isp > bestIsp)
+                    {
+                        bestIsp = candidate.Isp;
+                        bestCandidate = candidate;
                     }
-                    moduleIndex++;
                 }
             }
 
-            if (bestPart == null)
+            if (bestCandidate == null)
                 return result;
 
-            // Get propellant info from the prefab engine
-            Part bestPrefab = PartLoader.getPartInfoByName(bestPart.partName)?.partPrefab;
-            if (bestPrefab == null)
-                return result;
-
-            foreach (ModuleEngines enginePrefab in bestPrefab.FindModulesImplementing<ModuleEngines>())
-            {
-                double isp = enginePrefab.atmosphereCurve.Evaluate(0f);
-                if (Math.Abs(isp - bestIsp) < 0.01)
-                {
-                    result.Found = true;
-                    result.Isp = bestIsp;
-                    result.MixtureDensity = enginePrefab.mixtureDensity;
-
-                    foreach (Propellant p in enginePrefab.propellants)
-                    {
-                        if (p.name == "ElectricCharge")
-                            continue;
-
-                        result.Propellants.Add(new PropellantInfo
-                        {
-                            Name = p.name,
-                            Ratio = p.ratio
-                        });
-                    }
-                    break;
-                }
-            }
+            result.Found = true;
+            result.Isp = bestCandidate.Isp;
+            result.MixtureDensity = bestCandidate.MixtureDensity;
+            result.Propellants = new List<PropellantInfo>(bestCandidate.Propellants);
 
             return result;
         }
@@ -261,10 +248,12 @@ namespace OrbitalKeeper
             // Check EC availability
             if (vessel.loaded)
             {
-                vessel.GetConnectedResourceTotals(
-                    PartResourceLibrary.Instance.GetDefinition("ElectricCharge").id,
-                    out double ecAmount, out double ecMax);
-                result.AvailableEC = ecAmount;
+                PartResourceDefinition ecDef = GetResourceDefinition("ElectricCharge");
+                if (ecDef != null)
+                {
+                    vessel.GetConnectedResourceTotals(ecDef.id, out double ecAmount, out _);
+                    result.AvailableEC = ecAmount;
+                }
             }
             else
             {
@@ -289,8 +278,14 @@ namespace OrbitalKeeper
 
                 if (vessel.loaded)
                 {
-                    int resId = PartResourceLibrary.Instance.GetDefinition(prop.Name).id;
-                    vessel.GetConnectedResourceTotals(resId, out availableUnits, out double _);
+                    PartResourceDefinition def = GetResourceDefinition(prop.Name);
+                    if (def == null)
+                    {
+                        shortage += Loc.Format(Loc.ShortagePropellant, prop.Name, requiredUnits.ToString("F2"), "0.00") + " ";
+                        propellantSufficient = false;
+                        continue;
+                    }
+                    vessel.GetConnectedResourceTotals(def.id, out availableUnits, out double _);
                 }
                 else
                 {
@@ -333,9 +328,12 @@ namespace OrbitalKeeper
             // Consume EC
             if (vessel.loaded)
             {
-                int ecId = PartResourceLibrary.Instance.GetDefinition("ElectricCharge").id;
-                double ecTaken = vessel.RequestResource(vessel.rootPart, ecId, requiredEC, true);
-                ecConsumed = ecTaken;
+                PartResourceDefinition ecDef = GetResourceDefinition("ElectricCharge");
+                if (ecDef != null)
+                {
+                    double ecTaken = vessel.RequestResource(vessel.rootPart, ecDef.id, requiredEC, true);
+                    ecConsumed = ecTaken;
+                }
             }
             else
             {
@@ -349,15 +347,18 @@ namespace OrbitalKeeper
 
                 if (vessel.loaded)
                 {
-                    int resId = PartResourceLibrary.Instance.GetDefinition(prop.Name).id;
-                    double taken = vessel.RequestResource(vessel.rootPart, resId, requiredUnits, true);
-                    double density = PartResourceLibrary.Instance.GetDefinition(prop.Name).density;
+                    PartResourceDefinition def = GetResourceDefinition(prop.Name);
+                    if (def == null)
+                        continue;
+                    double taken = vessel.RequestResource(vessel.rootPart, def.id, requiredUnits, true);
+                    double density = def.density;
                     fuelMassConsumed += taken * density;
                 }
                 else
                 {
                     double taken = ConsumeProtoResource(vessel.protoVessel, prop.Name, requiredUnits);
-                    double density = PartResourceLibrary.Instance.GetDefinition(prop.Name).density;
+                    PartResourceDefinition def = GetResourceDefinition(prop.Name);
+                    double density = def != null ? def.density : 0.0;
                     fuelMassConsumed += taken * density;
                 }
             }
@@ -434,15 +435,14 @@ namespace OrbitalKeeper
 
             foreach (ProtoPartSnapshot pp in protoVessel.protoPartSnapshots)
             {
-                AvailablePart partInfo = PartLoader.getPartInfoByName(pp.partName);
-                if (partInfo != null)
+                if (TryGetPartPrefab(pp.partName, out Part prefab, out double dryMass))
                 {
-                    totalMass += partInfo.partPrefab.mass;
+                    totalMass += dryMass;
 
                     // Add resource mass
                     foreach (ProtoPartResourceSnapshot r in pp.resources)
                     {
-                        PartResourceDefinition resDef = PartResourceLibrary.Instance.GetDefinition(r.resourceName);
+                        PartResourceDefinition resDef = GetResourceDefinition(r.resourceName);
                         if (resDef != null)
                         {
                             totalMass += r.amount * resDef.density;
@@ -452,6 +452,82 @@ namespace OrbitalKeeper
             }
 
             return totalMass;
+        }
+
+        private static PartResourceDefinition GetResourceDefinition(string resourceName)
+        {
+            if (string.IsNullOrEmpty(resourceName))
+                return null;
+
+            if (ResourceDefinitionCache.TryGetValue(resourceName, out PartResourceDefinition cached))
+                return cached;
+
+            PartResourceDefinition definition = PartResourceLibrary.Instance.GetDefinition(resourceName);
+            ResourceDefinitionCache[resourceName] = definition;
+            return definition;
+        }
+
+        private static bool TryGetPartPrefab(string partName, out Part prefab, out double dryMass)
+        {
+            if (PartPrefabCache.TryGetValue(partName, out PartPrefabCacheEntry cached))
+            {
+                prefab = cached.Prefab;
+                dryMass = cached.DryMass;
+                return cached.Exists;
+            }
+
+            AvailablePart partInfo = PartLoader.getPartInfoByName(partName);
+            bool exists = partInfo != null && partInfo.partPrefab != null;
+            prefab = exists ? partInfo.partPrefab : null;
+            dryMass = exists ? partInfo.partPrefab.mass : 0.0;
+
+            PartPrefabCache[partName] = new PartPrefabCacheEntry
+            {
+                Exists = exists,
+                Prefab = prefab,
+                DryMass = dryMass
+            };
+
+            return exists;
+        }
+
+        private static List<UnloadedEngineCandidate> GetUnloadedEngineCandidates(string partName)
+        {
+            if (UnloadedEngineCache.TryGetValue(partName, out List<UnloadedEngineCandidate> cached))
+                return cached;
+
+            var candidates = new List<UnloadedEngineCandidate>();
+            if (TryGetPartPrefab(partName, out Part prefab, out double _))
+            {
+                for (int moduleIndex = 0; moduleIndex < prefab.Modules.Count; moduleIndex++)
+                {
+                    if (!(prefab.Modules[moduleIndex] is ModuleEngines enginePrefab))
+                        continue;
+
+                    var propellants = new List<PropellantInfo>();
+                    foreach (Propellant p in enginePrefab.propellants)
+                    {
+                        if (p.name == "ElectricCharge")
+                            continue;
+                        propellants.Add(new PropellantInfo
+                        {
+                            Name = p.name,
+                            Ratio = p.ratio
+                        });
+                    }
+
+                    candidates.Add(new UnloadedEngineCandidate
+                    {
+                        ModuleIndex = moduleIndex,
+                        Isp = enginePrefab.atmosphereCurve.Evaluate(0f),
+                        MixtureDensity = enginePrefab.mixtureDensity,
+                        Propellants = propellants
+                    });
+                }
+            }
+
+            UnloadedEngineCache[partName] = candidates;
+            return candidates;
         }
     }
 }

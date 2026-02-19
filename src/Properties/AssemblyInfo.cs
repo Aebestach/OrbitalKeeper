@@ -14,8 +14,8 @@ using System.Runtime.InteropServices;
 
 [assembly: Guid("3e4ab7af-6c35-43bd-8717-b9144e113f65")]
 
-[assembly: AssemblyVersion("1.0.1")]
-[assembly: AssemblyFileVersion("1.0.1")]
+[assembly: AssemblyVersion("2.0.0")]
+[assembly: AssemblyFileVersion("2.0.0")]
 
 // KSP Assembly attribute for mod detection
 [assembly: KSPAssembly("OrbitalKeeper", 1, 0)]

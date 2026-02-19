@@ -39,6 +39,9 @@ namespace OrbitalKeeper
 
         // --- AppLauncher ---
         private ApplicationLauncherButton appButton;
+        private bool appLauncherReady;
+        private bool appLauncherEventsRegistered;
+        private float nextAppLauncherRegisterAttemptRealtime;
 
         // --- Target vessel (for Flight scene) ---
         private Vessel targetVessel;
@@ -50,8 +53,15 @@ namespace OrbitalKeeper
         private string inputInc = "0";
         private string inputEcc = "0";
         private string inputInterval = "3600";
-        private float toleranceSlider = 5f;
-        private float fontSizeSlider;
+        private string inputTolerance = "5.0";
+        private string inputFontSize = "12";
+        private string guiHotkeyInput = "O";
+        private bool guiHotkeyAlt = true;
+        private bool guiHotkeyCtrl;
+        private bool guiHotkeyShift;
+        private bool guiEnableToolbarButton;
+        private bool autoKeepConfigExpanded = true;
+        private bool guiConfigExpanded = true;
         private bool lastLowPeWarning;
         private bool needsLayoutRecalc;
 
@@ -69,8 +79,6 @@ namespace OrbitalKeeper
         private static GUIStyle _boxStyle;
         private static GUIStyle _fleetBoxStyle;
         private static GUIStyle _windowStyle;
-        private static GUIStyle _hSliderStyle;
-        private static GUIStyle _hSliderThumbStyle;
 
         private void Start()
         {
@@ -85,23 +93,28 @@ namespace OrbitalKeeper
             // Ensure localization strings are loaded
             Loc.Load();
 
-            // Initialize font size slider from saved setting
-            fontSizeSlider = OrbitalKeepSettings.FontSize;
+            // Initialize GUI settings fields
+            inputFontSize = OrbitalKeepSettings.FontSize.ToString();
+            guiHotkeyInput = OrbitalKeepSettings.GuiToggleKey.ToString();
+            guiHotkeyAlt = OrbitalKeepSettings.GuiToggleAlt;
+            guiHotkeyCtrl = OrbitalKeepSettings.GuiToggleCtrl;
+            guiHotkeyShift = OrbitalKeepSettings.GuiToggleShift;
+            guiEnableToolbarButton = OrbitalKeepSettings.EnableToolbarButton;
             windowRect.width = GetMainMinWidth();
             fleetWindowRect.width = GetFleetMinWidth();
 
-            // Register AppLauncher button
-            GameEvents.onGUIApplicationLauncherReady.Add(OnAppLauncherReady);
-            GameEvents.onGUIApplicationLauncherUnreadifying.Add(OnAppLauncherUnready);
+            SetToolbarButtonEnabled(OrbitalKeepSettings.EnableToolbarButton);
 
             // Track vessel selection in tracking station
             GameEvents.onPlanetariumTargetChanged.Add(OnMapTargetChanged);
+
+            if (OrbitalKeepSettings.EnableToolbarButton && ApplicationLauncher.Instance != null)
+                OnAppLauncherReady();
         }
 
         private void OnDestroy()
         {
-            GameEvents.onGUIApplicationLauncherReady.Remove(OnAppLauncherReady);
-            GameEvents.onGUIApplicationLauncherUnreadifying.Remove(OnAppLauncherUnready);
+            UnregisterAppLauncherEvents();
             GameEvents.onPlanetariumTargetChanged.Remove(OnMapTargetChanged);
 
             if (appButton != null)
@@ -115,9 +128,75 @@ namespace OrbitalKeeper
         //  APP LAUNCHER
         // ======================================================================
 
+        private void Update()
+        {
+            HandleGuiHotkey();
+            TryRegisterAppLauncherButton();
+        }
+
         private void OnAppLauncherReady()
         {
+            if (!OrbitalKeepSettings.EnableToolbarButton)
+                return;
+            appLauncherReady = true;
+            float now = Time.realtimeSinceStartup;
+            nextAppLauncherRegisterAttemptRealtime = now;
+        }
+
+        private void OnAppLauncherUnready(GameScenes scene)
+        {
+            appLauncherReady = false;
+            nextAppLauncherRegisterAttemptRealtime = 0f;
             if (appButton != null)
+            {
+                ApplicationLauncher.Instance.RemoveModApplication(appButton);
+                appButton = null;
+            }
+        }
+
+        private void SetToolbarButtonEnabled(bool enabled)
+        {
+            if (enabled)
+            {
+                RegisterAppLauncherEvents();
+                if (ApplicationLauncher.Instance != null)
+                    OnAppLauncherReady();
+                return;
+            }
+
+            OnAppLauncherUnready(HighLogic.LoadedScene);
+            UnregisterAppLauncherEvents();
+        }
+
+        private void RegisterAppLauncherEvents()
+        {
+            if (appLauncherEventsRegistered)
+                return;
+            GameEvents.onGUIApplicationLauncherReady.Add(OnAppLauncherReady);
+            GameEvents.onGUIApplicationLauncherUnreadifying.Add(OnAppLauncherUnready);
+            appLauncherEventsRegistered = true;
+        }
+
+        private void UnregisterAppLauncherEvents()
+        {
+            if (!appLauncherEventsRegistered)
+                return;
+            GameEvents.onGUIApplicationLauncherReady.Remove(OnAppLauncherReady);
+            GameEvents.onGUIApplicationLauncherUnreadifying.Remove(OnAppLauncherUnready);
+            appLauncherEventsRegistered = false;
+        }
+
+        private void TryRegisterAppLauncherButton()
+        {
+            if (!OrbitalKeepSettings.EnableToolbarButton)
+                return;
+            if (appButton != null || !appLauncherReady)
+                return;
+            if (ApplicationLauncher.Instance == null)
+                return;
+
+            float now = Time.realtimeSinceStartup;
+            if (now < nextAppLauncherRegisterAttemptRealtime)
                 return;
 
             appButton = ApplicationLauncher.Instance.AddModApplication(
@@ -128,15 +207,46 @@ namespace OrbitalKeeper
                 ApplicationLauncher.AppScenes.MAPVIEW,
                 GameDatabase.Instance.GetTexture("OrbitalKeeper/Textures/icon_toolbar", false)
             );
+
+            if (appButton == null)
+            {
+                // Retry later to avoid hammering registration during unstable UI periods.
+                nextAppLauncherRegisterAttemptRealtime = now + 1f;
+            }
         }
 
-        private void OnAppLauncherUnready(GameScenes scene)
+        private void HandleGuiHotkey()
         {
-            if (appButton != null)
+            if (OrbitalKeepSettings.GuiToggleKey == KeyCode.None)
+                return;
+            if (!Input.GetKeyDown(OrbitalKeepSettings.GuiToggleKey))
+                return;
+            if (!AreHotkeyModifiersSatisfied(
+                OrbitalKeepSettings.GuiToggleAlt,
+                OrbitalKeepSettings.GuiToggleCtrl,
+                OrbitalKeepSettings.GuiToggleShift))
             {
-                ApplicationLauncher.Instance.RemoveModApplication(appButton);
-                appButton = null;
+                return;
             }
+
+            guiVisible = !guiVisible;
+            if (guiVisible)
+                RefreshVessel();
+        }
+
+        private static bool AreHotkeyModifiersSatisfied(bool requireAlt, bool requireCtrl, bool requireShift)
+        {
+            bool altPressed = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
+            bool ctrlPressed = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
+            bool shiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+
+            if (requireAlt && !altPressed)
+                return false;
+            if (requireCtrl && !ctrlPressed)
+                return false;
+            if (requireShift && !shiftPressed)
+                return false;
+            return true;
         }
 
         private void OnToolbarOn()
@@ -189,7 +299,7 @@ namespace OrbitalKeeper
             inputInc = editData.TargetInclination.ToString("F2");
             inputEcc = editData.TargetEccentricity.ToString("F6");
             inputInterval = editData.CheckInterval.ToString("F0");
-            toleranceSlider = (float)editData.Tolerance;
+            inputTolerance = editData.Tolerance.ToString("F1");
         }
 
         // ======================================================================
@@ -353,6 +463,41 @@ namespace OrbitalKeeper
             inputInc = DrawInputRow(Loc.TargetInc, inputInc);
             inputEcc = DrawInputRow(Loc.TargetEcc, inputEcc);
 
+            GUILayout.Space(6);
+            bool prevAutoKeepConfigExpanded = autoKeepConfigExpanded;
+            autoKeepConfigExpanded = DrawFoldoutHeader(Loc.ConfigAutoKeepSettings, autoKeepConfigExpanded);
+            if (autoKeepConfigExpanded)
+            {
+                // Auto-keep settings (placed with target orbit settings).
+                editData.AutoKeepEnabled = GUILayout.Toggle(editData.AutoKeepEnabled, Loc.AutoKeepToggle, _toggleStyle);
+                inputTolerance = DrawInputRow(
+                    $"{Loc.Format(Loc.ToleranceLabel, inputTolerance)} [1-20]",
+                    inputTolerance);
+                inputInterval = DrawInputRow(Loc.CheckInterval, inputInterval);
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(Loc.EngineModeLabel, _labelStyle, GUILayout.Width(GetEngineModeLabelWidth()));
+                if (GUILayout.Toggle(editData.EngineMode == EngineSelectionMode.IgnitedOnly,
+                    Loc.EngineModeIgnited, _toggleStyle, GUILayout.Width(GetEngineModeOptionWidth())))
+                {
+                    editData.EngineMode = EngineSelectionMode.IgnitedOnly;
+                }
+                if (GUILayout.Toggle(editData.EngineMode == EngineSelectionMode.ActiveNotShutdown,
+                    Loc.EngineModeActive, _toggleStyle, GUILayout.Width(GetEngineModeOptionWidth())))
+                {
+                    editData.EngineMode = EngineSelectionMode.ActiveNotShutdown;
+                }
+                GUILayout.EndHorizontal();
+            }
+            if (GUILayout.Button(Loc.ApplySettings, _buttonStyle))
+            {
+                ApplyOrbitKeepSettings();
+            }
+            if (prevAutoKeepConfigExpanded != autoKeepConfigExpanded)
+            {
+                needsLayoutRecalc = true;
+            }
+
             GUILayout.EndVertical();
         }
 
@@ -361,47 +506,40 @@ namespace OrbitalKeeper
             GUILayout.Label(Loc.SectionConfig, _boldStyle);
             GUILayout.BeginVertical(_boxStyle);
 
-            // Auto-keep toggle
-            editData.AutoKeepEnabled = GUILayout.Toggle(editData.AutoKeepEnabled, Loc.AutoKeepToggle, _toggleStyle);
+            bool prevGuiConfigExpanded = guiConfigExpanded;
 
-            // Tolerance slider
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(Loc.Format(Loc.ToleranceLabel, toleranceSlider.ToString("F1")),
-                _labelStyle, GUILayout.Width(GetLabelWidth()));
-            toleranceSlider = GUILayout.HorizontalSlider(toleranceSlider, 1f, 20f,
-                _hSliderStyle, _hSliderThumbStyle);
-            GUILayout.EndHorizontal();
-
-            // Check interval
-            inputInterval = DrawInputRow(Loc.CheckInterval, inputInterval);
-
-            // Engine selection mode
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(Loc.EngineModeLabel, _labelStyle, GUILayout.Width(GetEngineModeLabelWidth()));
-            if (GUILayout.Toggle(editData.EngineMode == EngineSelectionMode.IgnitedOnly,
-                Loc.EngineModeIgnited, _toggleStyle, GUILayout.Width(GetEngineModeOptionWidth())))
+            guiConfigExpanded = DrawFoldoutHeader(Loc.ConfigGuiSettings, guiConfigExpanded);
+            if (guiConfigExpanded)
             {
-                editData.EngineMode = EngineSelectionMode.IgnitedOnly;
+                // Font size input (GUI scaling)
+                inputFontSize = DrawInputRow(
+                    $"{Loc.Format(Loc.FontSizeLabel, inputFontSize)} [10-20]",
+                    inputFontSize);
+
+                // GUI hotkey config
+                guiHotkeyInput = DrawInputRow(Loc.GuiHotkeyLabel, guiHotkeyInput);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label(Loc.GuiHotkeyModifiers, _labelStyle, GUILayout.Width(GetLabelWidth()));
+                guiHotkeyAlt = GUILayout.Toggle(guiHotkeyAlt, Loc.ModAlt, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
+                guiHotkeyCtrl = GUILayout.Toggle(guiHotkeyCtrl, Loc.ModCtrl, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
+                guiHotkeyShift = GUILayout.Toggle(guiHotkeyShift, Loc.ModShift, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
+                GUILayout.EndHorizontal();
+                GUILayout.Label(
+                    Loc.Format(Loc.CurrentHotkey, FormatHotkeyDisplay(guiHotkeyInput, guiHotkeyAlt, guiHotkeyCtrl, guiHotkeyShift)),
+                    _labelStyle);
+                guiEnableToolbarButton = GUILayout.Toggle(
+                    guiEnableToolbarButton, Loc.ToolbarButtonToggle, _toggleStyle);
+
+                if (GUILayout.Button(Loc.ApplySettings, _buttonStyle))
+                {
+                    ApplyGuiSettings();
+                }
             }
-            if (GUILayout.Toggle(editData.EngineMode == EngineSelectionMode.ActiveNotShutdown,
-                Loc.EngineModeActive, _toggleStyle, GUILayout.Width(GetEngineModeOptionWidth())))
-            {
-                editData.EngineMode = EngineSelectionMode.ActiveNotShutdown;
-            }
-            GUILayout.EndHorizontal();
 
-            // Font size slider
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(Loc.Format(Loc.FontSizeLabel, ((int)fontSizeSlider).ToString()),
-                _labelStyle, GUILayout.Width(GetLabelWidth()));
-            fontSizeSlider = GUILayout.HorizontalSlider(fontSizeSlider, 10f, 22f,
-                _hSliderStyle, _hSliderThumbStyle);
-            GUILayout.EndHorizontal();
-
-            // Apply config button
-            if (GUILayout.Button(Loc.ApplySettings, _buttonStyle))
+            if (prevGuiConfigExpanded != guiConfigExpanded)
             {
-                ApplySettings();
+                // Force window height recalculation so collapsed sections reclaim space immediately.
+                needsLayoutRecalc = true;
             }
 
             GUILayout.EndVertical();
@@ -416,7 +554,7 @@ namespace OrbitalKeeper
             {
                 if (targetVessel != null)
                 {
-                    ApplySettings(); // Save settings first
+                    ApplyOrbitKeepSettings(); // Save orbit/keep settings first
                     VesselKeepModule module = targetVessel.GetComponent<VesselKeepModule>();
                     if (module != null)
                     {
@@ -574,6 +712,8 @@ namespace OrbitalKeeper
             }
 
             GUILayout.EndScrollView();
+            GUILayout.Space(4);
+            GUILayout.Label(Loc.FleetSelectionHint, _labelStyle);
             GUILayout.EndVertical();
             GUI.DragWindow();
         }
@@ -805,27 +945,47 @@ namespace OrbitalKeeper
         //  SETTINGS APPLICATION
         // ======================================================================
 
-        private void ApplySettings()
+        private void ApplyOrbitKeepSettings()
         {
-            if (editData == null || targetVessel == null)
-                return;
+            if (editData != null && targetVessel != null)
+            {
+                // Parse target parameters (input is in km, convert to meters)
+                if (double.TryParse(inputAp, out double ap))
+                    editData.TargetApoapsis = ap * 1000.0;
+                if (double.TryParse(inputPe, out double pe))
+                    editData.TargetPeriapsis = pe * 1000.0;
+                if (double.TryParse(inputInc, out double inc))
+                    editData.TargetInclination = inc;
+                if (double.TryParse(inputEcc, out double ecc))
+                    editData.TargetEccentricity = ecc;
+                if (double.TryParse(inputInterval, out double interval))
+                    editData.CheckInterval = Math.Max(60.0, interval); // Min 60s
 
-            // Parse target parameters (input is in km, convert to meters)
-            if (double.TryParse(inputAp, out double ap))
-                editData.TargetApoapsis = ap * 1000.0;
-            if (double.TryParse(inputPe, out double pe))
-                editData.TargetPeriapsis = pe * 1000.0;
-            if (double.TryParse(inputInc, out double inc))
-                editData.TargetInclination = inc;
-            if (double.TryParse(inputEcc, out double ecc))
-                editData.TargetEccentricity = ecc;
-            if (double.TryParse(inputInterval, out double interval))
-                editData.CheckInterval = Math.Max(60.0, interval); // Min 60s
+                if (double.TryParse(inputTolerance, out double tolerance))
+                {
+                    editData.Tolerance = Math.Max(1.0, Math.Min(20.0, tolerance));
+                    inputTolerance = editData.Tolerance.ToString("F1");
+                }
+            }
 
-            editData.Tolerance = toleranceSlider;
+            // Save to scenario
+            if (editData != null)
+                StationKeepScenario.Instance?.SetVesselData(editData);
 
-            // Save font size
-            int newFontSize = (int)fontSizeSlider;
+            ScreenMessages.PostScreenMessage(Loc.SettingsSaved,
+                OrbitalKeepSettings.MessageDuration, ScreenMessageStyle.UPPER_CENTER);
+        }
+
+        private void ApplyGuiSettings()
+        {
+            bool userSettingsChanged = false;
+
+            int newFontSize = OrbitalKeepSettings.FontSize;
+            if (int.TryParse(inputFontSize, out int parsedSize))
+            {
+                newFontSize = Math.Max(10, Math.Min(20, parsedSize));
+                inputFontSize = newFontSize.ToString();
+            }
             if (newFontSize != OrbitalKeepSettings.FontSize)
             {
                 OrbitalKeepSettings.FontSize = newFontSize;
@@ -833,15 +993,48 @@ namespace OrbitalKeeper
                 fleetWindowRect.width = GetFleetMinWidth();
                 windowRect.height = 0;
                 fleetWindowRect.height = 0;
-                OrbitalKeepSettings.SaveUserSettings();
-                _cachedFontSize = 0; // Force style rebuild on next frame
+                _cachedFontSize = 0;
+                userSettingsChanged = true;
             }
 
-            // Save to scenario
-            StationKeepScenario.Instance?.SetVesselData(editData);
+            if (Enum.TryParse(guiHotkeyInput?.Trim(), true, out KeyCode parsedKey) &&
+                parsedKey != KeyCode.None)
+            {
+                if (OrbitalKeepSettings.GuiToggleKey != parsedKey)
+                {
+                    OrbitalKeepSettings.GuiToggleKey = parsedKey;
+                    userSettingsChanged = true;
+                }
+                guiHotkeyInput = parsedKey.ToString();
+            }
+            if (OrbitalKeepSettings.GuiToggleAlt != guiHotkeyAlt)
+            {
+                OrbitalKeepSettings.GuiToggleAlt = guiHotkeyAlt;
+                userSettingsChanged = true;
+            }
+            if (OrbitalKeepSettings.GuiToggleCtrl != guiHotkeyCtrl)
+            {
+                OrbitalKeepSettings.GuiToggleCtrl = guiHotkeyCtrl;
+                userSettingsChanged = true;
+            }
+            if (OrbitalKeepSettings.GuiToggleShift != guiHotkeyShift)
+            {
+                OrbitalKeepSettings.GuiToggleShift = guiHotkeyShift;
+                userSettingsChanged = true;
+            }
+            if (OrbitalKeepSettings.EnableToolbarButton != guiEnableToolbarButton)
+            {
+                OrbitalKeepSettings.EnableToolbarButton = guiEnableToolbarButton;
+                SetToolbarButtonEnabled(guiEnableToolbarButton);
+                userSettingsChanged = true;
+            }
 
-            ScreenMessages.PostScreenMessage(Loc.SettingsSaved,
-                OrbitalKeepSettings.MessageDuration, ScreenMessageStyle.UPPER_CENTER);
+            if (userSettingsChanged)
+            {
+                OrbitalKeepSettings.SaveUserSettings();
+                ScreenMessages.PostScreenMessage(Loc.SettingsSaved,
+                    OrbitalKeepSettings.MessageDuration, ScreenMessageStyle.UPPER_CENTER);
+            }
         }
 
         private void SetTargetFromCurrentOrbit()
@@ -878,6 +1071,12 @@ namespace OrbitalKeeper
             string newValue = GUILayout.TextField(currentValue, _textFieldStyle, GUILayout.Width(GetInputWidth()));
             GUILayout.EndHorizontal();
             return newValue;
+        }
+
+        private static bool DrawFoldoutHeader(string title, bool expanded)
+        {
+            string marker = expanded ? "▼" : "▶";
+            return GUILayout.Toggle(expanded, $"{marker} {title}", _buttonStyle);
         }
 
         private static string FormatAltitude(double altitudeMeters)
@@ -926,6 +1125,11 @@ namespace OrbitalKeeper
             return Mathf.Round(120f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
         }
 
+        private static float GetHotkeyModifierWidth()
+        {
+            return Mathf.Round(70f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+        }
+
         private static float GetFleetNameWidth()
         {
             return Mathf.Round(200f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
@@ -955,6 +1159,16 @@ namespace OrbitalKeeper
             return Loc.Format(Loc.TimeFormat_s, secs.ToString());
         }
 
+        private static string FormatHotkeyDisplay(string keyInput, bool alt, bool ctrl, bool shift)
+        {
+            string key = string.IsNullOrEmpty(keyInput) ? Loc.Unit_NA : keyInput.ToUpperInvariant();
+            string prefix = string.Empty;
+            if (ctrl) prefix += "Ctrl+";
+            if (alt) prefix += "Alt+";
+            if (shift) prefix += "Shift+";
+            return prefix + key;
+        }
+
         // ======================================================================
         //  GUI STYLE MANAGEMENT
         // ======================================================================
@@ -982,8 +1196,6 @@ namespace OrbitalKeeper
             _fleetBoxStyle.padding = new RectOffset(0, _boxStyle.padding.right, _boxStyle.padding.top, _boxStyle.padding.bottom);
             _fleetBoxStyle.margin = new RectOffset(0, 0, _boxStyle.margin.top, _boxStyle.margin.bottom);
             _windowStyle = new GUIStyle(GUI.skin.window) { fontSize = size };
-            _hSliderStyle = new GUIStyle(GUI.skin.horizontalSlider);
-            _hSliderThumbStyle = new GUIStyle(GUI.skin.horizontalSliderThumb);
         }
     }
 }
