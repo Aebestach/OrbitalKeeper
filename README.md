@@ -20,7 +20,7 @@
 Automatic station-keeping runs for **unloaded** vessels in the background. Loaded vessels can be corrected manually from the UI.
 
 <div align="center">
-    <img src="https://imgur.com/OgDURAI.jpg" alt="UI Screenshot" width="1000" />
+    <img src="https://imgur.com/vvCp2Ml.jpg" alt="UI Screenshot" width="1000" />
 </div>
 
 ## ✨ Features
