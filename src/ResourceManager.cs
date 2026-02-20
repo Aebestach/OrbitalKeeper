@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace OrbitalKeeper
 {
@@ -324,6 +325,7 @@ namespace OrbitalKeeper
             double requiredEC = deltaV * OrbitalKeepSettings.ECPerDeltaV;
             double totalMass = vessel.loaded ? vessel.GetTotalMass() : GetProtoVesselMass(vessel.protoVessel);
             double requiredFuelMass = DeltaVCalculator.CalculateFuelMass(deltaV, engineInfo.Isp, totalMass);
+            string vesselName = vessel != null ? vessel.vesselName : "<null>";
 
             // Consume EC
             if (vessel.loaded)
@@ -344,24 +346,32 @@ namespace OrbitalKeeper
             foreach (var prop in engineInfo.Propellants)
             {
                 double requiredUnits = requiredFuelMass / engineInfo.MixtureDensity * prop.Ratio;
+                double taken = 0;
 
                 if (vessel.loaded)
                 {
                     PartResourceDefinition def = GetResourceDefinition(prop.Name);
                     if (def == null)
                         continue;
-                    double taken = vessel.RequestResource(vessel.rootPart, def.id, requiredUnits, true);
+                    taken = vessel.RequestResource(vessel.rootPart, def.id, requiredUnits, true);
                     double density = def.density;
                     fuelMassConsumed += taken * density;
                 }
                 else
                 {
-                    double taken = ConsumeProtoResource(vessel.protoVessel, prop.Name, requiredUnits);
+                    taken = ConsumeProtoResource(vessel.protoVessel, prop.Name, requiredUnits);
                     PartResourceDefinition def = GetResourceDefinition(prop.Name);
                     double density = def != null ? def.density : 0.0;
                     fuelMassConsumed += taken * density;
                 }
+
+                Debug.Log($"[OrbitalKeeper] Resource consume detail ({vesselName}): " +
+                          $"dV={deltaV:F2}m/s, prop={prop.Name}, required={requiredUnits:F3}, taken={taken:F3}");
             }
+
+            Debug.Log($"[OrbitalKeeper] Resource consume summary ({vesselName}): " +
+                      $"dV={deltaV:F2}m/s, loaded={vessel.loaded}, requiredEC={requiredEC:F2}, consumedEC={ecConsumed:F2}, " +
+                      $"requiredFuel={requiredFuelMass:F5}t, consumedFuel={fuelMassConsumed:F5}t");
 
             return true;
         }

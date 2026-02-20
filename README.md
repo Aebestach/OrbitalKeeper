@@ -28,9 +28,9 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 *   **🛰️ Background station-keeping**
     *   Checks orbit drift at a configurable interval and applies corrections for unloaded vessels.
 *   **🧭 Manual correction for loaded vessels**
-    *   Trigger a correction from the UI when you want direct control in-flight.
+    *   Trigger a correction with the UI’s Manual Correct action for direct control in-flight.
 *   **⚙️ Per-vessel configuration**
-    *   Set target Ap/Pe/Inclination/Eccentricity.
+    *   Set target Ap/Pe/Inclination.
     *   Adjust tolerance, check interval, and engine selection mode.
 *   **🔋 Resource-aware corrections**
     *   Consumes propellant and Electric Charge based on required delta-v.
@@ -60,7 +60,7 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 ### Configure a vessel
 
 *   Select a vessel, then set target orbit parameters:
-    *   Apoapsis (Ap), Periapsis (Pe), Inclination, Eccentricity.
+    *   Apoapsis (Ap), Periapsis (Pe), Inclination.
 *   Set station-keeping options:
     *   Auto-keep toggle, tolerance, check interval, engine mode, UI font size.
 *   Click **Apply Settings** to save.
@@ -73,7 +73,6 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 ### Actions
 
 *   **Manual Correct** applies a correction immediately for the selected vessel.
-*   **Refresh Status** recalculates drift and resource availability.
 *   **Vessel Overview** lists tracked vessels and their statuses.
 *   **Remove Keeping** clears station-keeping data for the vessel.
 
@@ -99,7 +98,7 @@ Global defaults are stored in:
 
 *   Ap/Pe use relative ratios, and a correction is needed only when outside `1 ± (tolerance% / 100)`.
 *   When target Ap/Pe is very small (< 1 m), use absolute checks instead: `|current - target| > 1000m * (tolerance% / 100)`.
-*   Inc/Ecc use absolute values with minimum thresholds:
+*   Inc/Ecc use absolute values with minimum thresholds (Ecc is derived from target Ap/Pe):
     *   Inc minimum threshold is `0.5°`.
     *   Ecc minimum threshold is `0.001`.
 *   Corrections are executed only when the total computed delta-v is greater than `0.01 m/s`.

@@ -51,9 +51,9 @@ namespace OrbitalKeeper
         private string inputAp = "0";
         private string inputPe = "0";
         private string inputInc = "0";
-        private string inputEcc = "0";
         private string inputInterval = "3600";
         private string inputTolerance = "5.0";
+        private bool inputAutoKeepEnabled;
         private string inputFontSize = "12";
         private string guiHotkeyInput = "O";
         private bool guiHotkeyAlt = true;
@@ -288,6 +288,7 @@ namespace OrbitalKeeper
             {
                 editData = StationKeepScenario.Instance.GetOrCreateVesselData(targetVessel);
                 SyncInputFields();
+                RefreshTargetStatus();
             }
         }
 
@@ -297,9 +298,9 @@ namespace OrbitalKeeper
             inputAp = (editData.TargetApoapsis / 1000.0).ToString("F3"); // Display in km
             inputPe = (editData.TargetPeriapsis / 1000.0).ToString("F3");
             inputInc = editData.TargetInclination.ToString("F2");
-            inputEcc = editData.TargetEccentricity.ToString("F6");
             inputInterval = editData.CheckInterval.ToString("F0");
             inputTolerance = editData.Tolerance.ToString("F1");
+            inputAutoKeepEnabled = editData.AutoKeepEnabled;
         }
 
         // ======================================================================
@@ -319,6 +320,7 @@ namespace OrbitalKeeper
                 windowRect.height = 0;
                 needsLayoutRecalc = false;
             }
+            UpdateFleetWindowWidth();
 
             windowRect = GUILayout.Window(WINDOW_ID, windowRect, DrawMainWindow,
                 Loc.WindowTitle, _windowStyle, GUILayout.MinWidth(GetMainMinWidth()));
@@ -461,15 +463,13 @@ namespace OrbitalKeeper
             inputAp = DrawInputRow(Loc.TargetAp, inputAp);
             inputPe = DrawInputRow(Loc.TargetPe, inputPe);
             inputInc = DrawInputRow(Loc.TargetInc, inputInc);
-            inputEcc = DrawInputRow(Loc.TargetEcc, inputEcc);
 
             GUILayout.Space(6);
             bool prevAutoKeepConfigExpanded = autoKeepConfigExpanded;
             autoKeepConfigExpanded = DrawFoldoutHeader(Loc.ConfigAutoKeepSettings, autoKeepConfigExpanded);
             if (autoKeepConfigExpanded)
             {
-                // Auto-keep settings (placed with target orbit settings).
-                editData.AutoKeepEnabled = GUILayout.Toggle(editData.AutoKeepEnabled, Loc.AutoKeepToggle, _toggleStyle);
+                inputAutoKeepEnabled = GUILayout.Toggle(inputAutoKeepEnabled, Loc.AutoKeepToggle, _toggleStyle);
                 inputTolerance = DrawInputRow(
                     $"{Loc.Format(Loc.ToleranceLabel, inputTolerance)} [1-20]",
                     inputTolerance);
@@ -554,26 +554,13 @@ namespace OrbitalKeeper
             {
                 if (targetVessel != null)
                 {
-                    ApplyOrbitKeepSettings(); // Save orbit/keep settings first
+                    ApplyOrbitKeepSettings(false); // Save orbit/keep settings first
                     VesselKeepModule module = targetVessel.GetComponent<VesselKeepModule>();
                     if (module != null)
                     {
                         module.ManualCorrection();
                         RefreshVessel();
                     }
-                }
-            }
-
-            if (GUILayout.Button(Loc.RefreshStatus, _buttonStyle, GUILayout.Height(30)))
-            {
-                if (targetVessel != null)
-                {
-                    VesselKeepModule module = targetVessel.GetComponent<VesselKeepModule>();
-                    if (module != null)
-                    {
-                        module.RefreshStatus();
-                    }
-                    RefreshVessel();
                 }
             }
 
@@ -693,7 +680,7 @@ namespace OrbitalKeeper
                 GUILayout.Label(Loc.Format(Loc.FleetInfoLine,
                     FormatAltitude(data.TargetApoapsis),
                     FormatAltitude(data.TargetPeriapsis),
-                    data.TotalDeltaVSpent.ToString("F1")), _labelStyle);
+                    data.TotalDeltaVSpent.ToString("F2")), _labelStyle);
 
                 GUILayout.EndVertical();
                 Rect entryRect = GUILayoutUtility.GetLastRect();
@@ -945,7 +932,7 @@ namespace OrbitalKeeper
         //  SETTINGS APPLICATION
         // ======================================================================
 
-        private void ApplyOrbitKeepSettings()
+        private void ApplyOrbitKeepSettings(bool refreshStatus = true)
         {
             if (editData != null && targetVessel != null)
             {
@@ -956,8 +943,6 @@ namespace OrbitalKeeper
                     editData.TargetPeriapsis = pe * 1000.0;
                 if (double.TryParse(inputInc, out double inc))
                     editData.TargetInclination = inc;
-                if (double.TryParse(inputEcc, out double ecc))
-                    editData.TargetEccentricity = ecc;
                 if (double.TryParse(inputInterval, out double interval))
                     editData.CheckInterval = Math.Max(60.0, interval); // Min 60s
 
@@ -966,6 +951,8 @@ namespace OrbitalKeeper
                     editData.Tolerance = Math.Max(1.0, Math.Min(20.0, tolerance));
                     inputTolerance = editData.Tolerance.ToString("F1");
                 }
+
+                editData.AutoKeepEnabled = inputAutoKeepEnabled;
             }
 
             // Save to scenario
@@ -974,6 +961,51 @@ namespace OrbitalKeeper
 
             ScreenMessages.PostScreenMessage(Loc.SettingsSaved,
                 OrbitalKeepSettings.MessageDuration, ScreenMessageStyle.UPPER_CENTER);
+
+            if (refreshStatus && targetVessel != null)
+            {
+                RefreshTargetStatus();
+                RefreshVessel();
+            }
+        }
+
+        private void RefreshTargetStatus()
+        {
+            if (targetVessel == null || editData == null)
+                return;
+
+            VesselKeepModule module = targetVessel.GetComponent<VesselKeepModule>();
+            if (module != null)
+            {
+                module.RefreshStatus();
+                return;
+            }
+
+            if (!VesselKeepModule.IsValidOrbitForKeeping(targetVessel))
+            {
+                editData.Status = KeepStatus.InvalidOrbit;
+                return;
+            }
+
+            var correction = DeltaVCalculator.CalculateCorrection(targetVessel, editData);
+            if (!correction.NeedsCorrection)
+            {
+                editData.Status = editData.AutoKeepEnabled ? KeepStatus.Nominal : KeepStatus.Disabled;
+                return;
+            }
+
+            ResourceManager.EngineInfo engineInfo = targetVessel.loaded
+                ? ResourceManager.FindBestEngine(targetVessel, editData.EngineMode)
+                : ResourceManager.FindBestEngineUnloaded(targetVessel.protoVessel, editData.EngineMode);
+
+            if (!engineInfo.Found)
+            {
+                editData.Status = KeepStatus.NoEngine;
+                return;
+            }
+
+            var resourceCheck = ResourceManager.CheckResources(targetVessel, correction.TotalDeltaV, engineInfo);
+            editData.Status = resourceCheck.Sufficient ? KeepStatus.Drifting : KeepStatus.InsufficientResources;
         }
 
         private void ApplyGuiSettings()
@@ -990,7 +1022,7 @@ namespace OrbitalKeeper
             {
                 OrbitalKeepSettings.FontSize = newFontSize;
                 windowRect.width = GetMainMinWidth();
-                fleetWindowRect.width = GetFleetMinWidth();
+                fleetWindowRect.width = Math.Max(fleetWindowRect.width, GetFleetMinWidth());
                 windowRect.height = 0;
                 fleetWindowRect.height = 0;
                 _cachedFontSize = 0;
@@ -1045,8 +1077,6 @@ namespace OrbitalKeeper
             editData.TargetApoapsis = targetVessel.orbit.ApA;
             editData.TargetPeriapsis = targetVessel.orbit.PeA;
             editData.TargetInclination = targetVessel.orbit.inclination;
-            editData.TargetEccentricity = targetVessel.orbit.eccentricity;
-
             SyncInputFields();
 
             StationKeepScenario.Instance?.SetVesselData(editData);
@@ -1097,7 +1127,23 @@ namespace OrbitalKeeper
 
         private static float GetFleetMinWidth()
         {
-            return Mathf.Round(BASE_FLEET_WIDTH * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            float baseWidth = Mathf.Round(BASE_FLEET_WIDTH * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            if (_labelStyle == null || _windowStyle == null)
+                return baseWidth;
+            float hintWidth = _labelStyle.CalcSize(new GUIContent(Loc.FleetSelectionHint)).x;
+            float padding = 20f + _windowStyle.padding.left + _windowStyle.padding.right + _labelStyle.margin.left + _labelStyle.margin.right;
+            return Mathf.Max(baseWidth, Mathf.Round(hintWidth + padding));
+        }
+
+        private void UpdateFleetWindowWidth()
+        {
+            if (!showFleetView)
+                return;
+            float minWidth = GetFleetMinWidth();
+            if (minWidth <= fleetWindowRect.width)
+                return;
+            fleetWindowRect.width = minWidth;
+            fleetWindowRect.height = 0;
         }
 
         private static float GetLabelWidth()

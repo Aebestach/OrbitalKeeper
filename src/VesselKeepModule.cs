@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 
 namespace OrbitalKeeper
@@ -123,6 +124,9 @@ namespace OrbitalKeeper
             double targetApR = data.TargetApoapsis + body.Radius;
             double targetPeR = data.TargetPeriapsis + body.Radius;
             double targetSMA = (targetApR + targetPeR) / 2.0;
+            double targetEcc = 0.0;
+            if (targetApR + targetPeR > 0.0)
+                targetEcc = Math.Max(0.0, (targetApR - targetPeR) / (targetApR + targetPeR));
 
             // Preserve orientation elements
             double lan = orbit.LAN;
@@ -131,7 +135,7 @@ namespace OrbitalKeeper
             double epoch = orbit.epoch;
 
             orbit.semiMajorAxis = targetSMA;
-            orbit.eccentricity = data.TargetEccentricity;
+            orbit.eccentricity = targetEcc;
             orbit.inclination = data.TargetInclination;
             orbit.LAN = lan;
             orbit.argumentOfPeriapsis = argPe;
@@ -147,8 +151,8 @@ namespace OrbitalKeeper
 
         /// <summary>
         /// Manually triggers a station-keeping correction for this vessel.
-        /// Called from the UI. Uses GoOnRails/GoOffRails for loaded vessels
-        /// to ensure the orbit change is not overwritten by the physics engine.
+        /// Called from the UI. For loaded vessels, temporarily switches to rails,
+        /// applies the target orbit, then restores physics on the next fixed step.
         /// </summary>
         /// <returns>True if correction was successfully applied.</returns>
         public bool ManualCorrection()
@@ -210,14 +214,17 @@ namespace OrbitalKeeper
             if (!consumed)
                 return false;
 
-            // Apply orbit change — use GoOnRails for loaded vessels
+            // Apply orbit change.
+            // For loaded vessels, avoid immediate GoOffRails in the same frame,
+            // which can re-synchronize to stale physics state and corrupt orbit.
             if (vessel.loaded)
             {
                 try
                 {
                     vessel.GoOnRails();
                     ApplyOrbitalChangeOnRails(vessel, keepData);
-                    vessel.GoOffRails();
+                    vessel.orbitDriver.UpdateOrbit();
+                    StartCoroutine(RestorePhysicsNextFixedStep(vessel));
                 }
                 catch (Exception ex)
                 {
@@ -245,6 +252,26 @@ namespace OrbitalKeeper
             }
 
             return true;
+        }
+
+        private IEnumerator RestorePhysicsNextFixedStep(Vessel targetVessel)
+        {
+            // Wait one physics tick so the new rails orbit becomes the authority
+            // before switching back to loaded simulation.
+            yield return new WaitForFixedUpdate();
+
+            if (targetVessel == null || !targetVessel.loaded)
+                yield break;
+
+            try
+            {
+                targetVessel.orbitDriver.UpdateOrbit();
+                targetVessel.GoOffRails();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[OrbitalKeeper] Error restoring physics for {targetVessel.vesselName}: {ex.Message}");
+            }
         }
 
         /// <summary>

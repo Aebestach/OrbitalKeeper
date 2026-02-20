@@ -65,8 +65,6 @@ namespace OrbitalKeeper
         public static string TargetAp = "Target Apoapsis (km)";
         public static string TargetPe = "Target Periapsis (km)";
         public static string TargetInc = "Target Inclination (°)";
-        public static string TargetEcc = "Target Eccentricity";
-
         // ==============================
         //  Configuration Section
         // ==============================
@@ -94,7 +92,6 @@ namespace OrbitalKeeper
         // ==============================
         public static string SectionActions = "--- Actions ---";
         public static string ManualCorrect = "Manual Correction";
-        public static string RefreshStatus = "Refresh Status";
         public static string WarningLowPe = "Warning: Target periapsis below safe altitude (<<1>>)";
 
         // ==============================
@@ -211,8 +208,6 @@ namespace OrbitalKeeper
             TargetAp = Get("#LOC_OrbKeep_TargetAp", TargetAp);
             TargetPe = Get("#LOC_OrbKeep_TargetPe", TargetPe);
             TargetInc = Get("#LOC_OrbKeep_TargetInc", TargetInc);
-            TargetEcc = Get("#LOC_OrbKeep_TargetEcc", TargetEcc);
-
             // Configuration
             SectionConfig = Get("#LOC_OrbKeep_SectionConfig", SectionConfig);
             AutoKeepToggle = Get("#LOC_OrbKeep_AutoKeepToggle", AutoKeepToggle);
@@ -236,7 +231,6 @@ namespace OrbitalKeeper
             // Actions
             SectionActions = Get("#LOC_OrbKeep_SectionActions", SectionActions);
             ManualCorrect = Get("#LOC_OrbKeep_ManualCorrect", ManualCorrect);
-            RefreshStatus = Get("#LOC_OrbKeep_RefreshStatus", RefreshStatus);
             WarningLowPe = Get("#LOC_OrbKeep_WarningLowPe", WarningLowPe);
 
             // Statistics

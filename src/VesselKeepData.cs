@@ -54,9 +54,6 @@ namespace OrbitalKeeper
         /// <summary>Target orbital inclination in degrees.</summary>
         public double TargetInclination { get; set; }
 
-        /// <summary>Target orbital eccentricity.</summary>
-        public double TargetEccentricity { get; set; }
-
         // --- Configuration ---
 
         /// <summary>Tolerance percentage (0-100). Orbit is considered drifted when
@@ -104,7 +101,6 @@ namespace OrbitalKeeper
                 TargetApoapsis = vessel.orbit.ApA,
                 TargetPeriapsis = vessel.orbit.PeA,
                 TargetInclination = vessel.orbit.inclination,
-                TargetEccentricity = vessel.orbit.eccentricity,
                 AutoKeepEnabled = false
             };
             return data;
@@ -120,7 +116,6 @@ namespace OrbitalKeeper
             node.AddValue("targetAp", TargetApoapsis);
             node.AddValue("targetPe", TargetPeriapsis);
             node.AddValue("targetInc", TargetInclination);
-            node.AddValue("targetEcc", TargetEccentricity);
             node.AddValue("tolerance", Tolerance);
             node.AddValue("autoEnabled", AutoKeepEnabled);
             node.AddValue("checkInterval", CheckInterval);
@@ -142,7 +137,6 @@ namespace OrbitalKeeper
             data.TargetApoapsis = ParseDouble(node, "targetAp", 0);
             data.TargetPeriapsis = ParseDouble(node, "targetPe", 0);
             data.TargetInclination = ParseDouble(node, "targetInc", 0);
-            data.TargetEccentricity = ParseDouble(node, "targetEcc", 0);
             data.Tolerance = ParseDouble(node, "tolerance", 5.0);
             data.CheckInterval = ParseDouble(node, "checkInterval", 3600.0);
             data.LastCheckTime = ParseDouble(node, "lastCheckTime", 0.0);
