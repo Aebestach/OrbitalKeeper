@@ -93,7 +93,7 @@ Global defaults are stored in:
 | `showCorrectionMessages` | Show correction messages | `True` |
 | `showResourceWarnings` | Show resource warnings | `True` |
 | `messageDuration` | Message duration (s) | `5.0` |
-| `enableToolbarButton` | Enable the stock AppLauncher toolbar button | `False` |
+| `enableToolbarButton` | Enable the stock AppLauncher toolbar button | `True` |
 
 ### Tolerance Notes
 
@@ -111,4 +111,4 @@ Global defaults are stored in:
 
 ### Performance Note
 
-*   When `enableToolbarButton` is enabled, switching to the Flight scene under heavy load may cause brief stutters once per second for up to 10 seconds.
+*   When `enableToolbarButton` is enabled, stutters may occur once per second for up to 10 seconds when using JanitorsCloset. Behavior varies by device; if you need JanitorsCloset, you can disable this option.

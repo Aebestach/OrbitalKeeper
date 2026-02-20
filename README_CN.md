@@ -93,7 +93,7 @@
 | `showCorrectionMessages` | 是否显示修正提示 | `True` |
 | `showResourceWarnings` | 是否显示资源不足警告 | `True` |
 | `messageDuration` | 提示信息持续时间（s） | `5.0` |
-| `enableToolbarButton` | 是否启用 AppLauncher 工具栏按钮 | `False` |
+| `enableToolbarButton` | 是否启用 AppLauncher 工具栏按钮 | `True` |
 
 ### 容差说明
 
@@ -111,5 +111,5 @@
 
 ### 性能提示
 
-*   启用 `enableToolbarButton` 后，在高负载情况下切换到飞行场景可能会出现 10 秒以内、每秒 1 次的卡顿。
+*   启用 `enableToolbarButton` 后，在使用JanitorsCloset的情况下会出现 10 秒以内、每秒 1 次的卡顿。（具体卡顿情况以设备为主，若需使用JanitorsCloset，可以选择关闭）
 
