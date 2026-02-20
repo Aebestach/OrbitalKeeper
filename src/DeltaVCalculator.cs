@@ -44,7 +44,6 @@ namespace OrbitalKeeper
             var result = new CorrectionResult();
             Orbit orbit = vessel.orbit;
             CelestialBody body = orbit.referenceBody;
-            double mu = body.gravParameter;
 
             // Current orbital parameters
             double currentAp = orbit.ApA;

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace OrbitalKeeper
@@ -26,6 +25,14 @@ namespace OrbitalKeeper
         /// Dictionary of vessel station-keeping data, keyed by vessel ID.
         /// </summary>
         private Dictionary<Guid, VesselKeepData> vesselData = new Dictionary<Guid, VesselKeepData>();
+        private readonly List<Guid> vesselIdBuffer = new List<Guid>(128);
+        private bool vesselIdBufferDirty = true;
+        private int nextVesselIndex;
+        private float nextSchedulerRealtime;
+
+        private const float SchedulerIntervalSeconds = 0.5f;
+        private const int MaxVesselsScannedPerTick = 48;
+        private const int MaxChecksPerTick = 8;
 
         public override void OnAwake()
         {
@@ -72,13 +79,39 @@ namespace OrbitalKeeper
             if (!HighLogic.LoadedSceneIsFlight && HighLogic.LoadedScene != GameScenes.TRACKSTATION)
                 return;
 
+            float nowRealtime = Time.realtimeSinceStartup;
+            if (nowRealtime < nextSchedulerRealtime)
+                return;
+
+            nextSchedulerRealtime = nowRealtime + SchedulerIntervalSeconds;
+            RunScheduledChecks();
+        }
+
+        private void RunScheduledChecks()
+        {
+            if (vesselData.Count == 0)
+                return;
+
+            if (vesselIdBufferDirty || vesselIdBuffer.Count != vesselData.Count)
+                RebuildVesselIdBuffer();
+
+            if (vesselIdBuffer.Count == 0)
+                return;
+
+            int scanned = 0;
+            int checks = 0;
+            int totalTracked = vesselIdBuffer.Count;
             double currentTime = Planetarium.GetUniversalTime();
 
-            // Iterate over a snapshot of keys to avoid modification during enumeration
-            var vesselIds = vesselData.Keys.ToList();
-
-            foreach (Guid vesselId in vesselIds)
+            while (scanned < MaxVesselsScannedPerTick && checks < MaxChecksPerTick && totalTracked > 0)
             {
+                if (nextVesselIndex >= totalTracked)
+                    nextVesselIndex = 0;
+
+                Guid vesselId = vesselIdBuffer[nextVesselIndex];
+                nextVesselIndex++;
+                scanned++;
+
                 if (!vesselData.TryGetValue(vesselId, out VesselKeepData data))
                     continue;
 
@@ -94,6 +127,7 @@ namespace OrbitalKeeper
                     continue;
 
                 data.LastCheckTime = currentTime;
+                checks++;
 
                 // Find the vessel
                 Vessel vessel = FlightGlobals.FindVessel(vesselId);
@@ -123,6 +157,18 @@ namespace OrbitalKeeper
             }
         }
 
+        private void RebuildVesselIdBuffer()
+        {
+            vesselIdBuffer.Clear();
+            foreach (Guid vesselId in vesselData.Keys)
+            {
+                vesselIdBuffer.Add(vesselId);
+            }
+            if (nextVesselIndex >= vesselIdBuffer.Count)
+                nextVesselIndex = 0;
+            vesselIdBufferDirty = false;
+        }
+
         // ======================================================================
         //  PERSISTENCE
         // ======================================================================
@@ -134,6 +180,8 @@ namespace OrbitalKeeper
         {
             base.OnLoad(node);
             vesselData.Clear();
+            vesselIdBufferDirty = true;
+            nextVesselIndex = 0;
 
             ConfigNode[] vesselNodes = node.GetNodes("VESSEL_KEEP");
             if (vesselNodes == null)
@@ -143,7 +191,13 @@ namespace OrbitalKeeper
             {
                 try
                 {
+                    bool hasPersistedLastCheckTime = vNode.HasValue("lastCheckTime");
                     VesselKeepData vData = VesselKeepData.Load(vNode);
+                    if (!hasPersistedLastCheckTime)
+                    {
+                        // Backward compatibility for old saves: spread first checks over time.
+                        vData.LastCheckTime = BuildStaggeredLastCheckTime(vData.VesselId, vData.CheckInterval);
+                    }
                     vesselData[vData.VesselId] = vData;
                 }
                 catch (Exception ex)
@@ -194,7 +248,9 @@ namespace OrbitalKeeper
                 data.Tolerance = OrbitalKeepSettings.DefaultTolerance;
                 data.CheckInterval = OrbitalKeepSettings.DefaultCheckInterval;
                 data.EngineMode = OrbitalKeepSettings.DefaultEngineMode;
+                data.LastCheckTime = BuildStaggeredLastCheckTime(vessel.id, data.CheckInterval);
                 vesselData[vessel.id] = data;
+                vesselIdBufferDirty = true;
             }
             return data;
         }
@@ -205,6 +261,7 @@ namespace OrbitalKeeper
         public void SetVesselData(VesselKeepData data)
         {
             vesselData[data.VesselId] = data;
+            vesselIdBufferDirty = true;
         }
 
         /// <summary>
@@ -212,7 +269,8 @@ namespace OrbitalKeeper
         /// </summary>
         public void RemoveVesselData(Guid vesselId)
         {
-            vesselData.Remove(vesselId);
+            if (vesselData.Remove(vesselId))
+                vesselIdBufferDirty = true;
         }
 
         /// <summary>
@@ -223,11 +281,6 @@ namespace OrbitalKeeper
             return vesselData.Values;
         }
 
-        /// <summary>
-        /// Returns the number of tracked vessels.
-        /// </summary>
-        public int TrackedVesselCount => vesselData.Count;
-
         // ======================================================================
         //  EVENT HANDLERS
         // ======================================================================
@@ -235,13 +288,30 @@ namespace OrbitalKeeper
         private void OnVesselRecovered(ProtoVessel protoVessel, bool quick)
         {
             if (protoVessel != null)
-                vesselData.Remove(protoVessel.vesselID);
+            {
+                if (vesselData.Remove(protoVessel.vesselID))
+                    vesselIdBufferDirty = true;
+            }
         }
 
         private void OnVesselTerminated(ProtoVessel protoVessel)
         {
             if (protoVessel != null)
-                vesselData.Remove(protoVessel.vesselID);
+            {
+                if (vesselData.Remove(protoVessel.vesselID))
+                    vesselIdBufferDirty = true;
+            }
+        }
+
+        private static double BuildStaggeredLastCheckTime(Guid vesselId, double checkInterval)
+        {
+            double interval = Math.Max(60.0, checkInterval);
+            double currentUt = Planetarium.fetch != null ? Planetarium.GetUniversalTime() : 0.0;
+
+            // Spread next due time over roughly 5%-100% of the interval.
+            int hash = vesselId.GetHashCode() & 0x7FFFFFFF;
+            double fraction = ((hash % 1000) / 1000.0) * 0.95;
+            return currentUt - interval * fraction;
         }
     }
 }

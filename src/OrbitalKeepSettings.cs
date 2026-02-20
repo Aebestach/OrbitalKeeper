@@ -47,12 +47,23 @@ namespace OrbitalKeeper
 
         // --- UI settings (saved per-user in PluginData/config.xml) ---
 
-        /// <summary>UI font size. Range: 10 - 22. Default 12.</summary>
+        /// <summary>UI font size. Range: 10 - 20. Default 12.</summary>
         public static int FontSize { get; set; } = 12;
+        /// <summary>GUI toggle key. Default: O.</summary>
+        public static KeyCode GuiToggleKey { get; set; } = KeyCode.O;
+        /// <summary>Require Alt modifier for GUI toggle hotkey.</summary>
+        public static bool GuiToggleAlt { get; set; } = true;
+        /// <summary>Require Ctrl modifier for GUI toggle hotkey.</summary>
+        public static bool GuiToggleCtrl { get; set; } = false;
+        /// <summary>Require Shift modifier for GUI toggle hotkey.</summary>
+        public static bool GuiToggleShift { get; set; } = false;
+        /// <summary>Whether to register the stock toolbar button.</summary>
+        public static bool EnableToolbarButton { get; set; } = false;
 
         private const int FONT_SIZE_MIN = 10;
-        private const int FONT_SIZE_MAX = 22;
-        private const int FONT_SIZE_DEFAULT = 12;
+        private const int FONT_SIZE_MAX = 20;
+        private static bool _hasUserToolbarButtonOverride;
+        private static bool _userToolbarButtonValue;
 
         /// <summary>
         /// Loads settings from GameDatabase. Called once on mod initialization.
@@ -78,6 +89,15 @@ namespace OrbitalKeeper
             MinSafeAltitudeMargin = ParseDouble(settings, "minSafeAltitudeMargin", MinSafeAltitudeMargin);
             MaxCorrectionDeltaV = ParseDouble(settings, "maxCorrectionDeltaV", MaxCorrectionDeltaV);
             MessageDuration = (float)ParseDouble(settings, "messageDuration", MessageDuration);
+            if (settings.HasValue("enableToolbarButton"))
+            {
+                bool.TryParse(settings.GetValue("enableToolbarButton"), out bool enableToolbarButton);
+                EnableToolbarButton = enableToolbarButton;
+            }
+            if (_hasUserToolbarButtonOverride)
+            {
+                EnableToolbarButton = _userToolbarButtonValue;
+            }
 
             if (settings.HasValue("defaultEngineMode"))
             {
@@ -107,6 +127,7 @@ namespace OrbitalKeeper
         /// <summary>Loads per-user UI settings from PluginData/config.xml.</summary>
         private static void LoadUserSettings()
         {
+            _hasUserToolbarButtonOverride = false;
             string path = GetUserSettingsPath();
             if (File.Exists(path))
             {
@@ -116,8 +137,37 @@ namespace OrbitalKeeper
                     int.TryParse(node.GetValue("FontSize"), out int size);
                     FontSize = size;
                 }
+                if (node != null && node.HasValue("GuiToggleKey"))
+                {
+                    if (System.Enum.TryParse(node.GetValue("GuiToggleKey"), true, out KeyCode key))
+                        GuiToggleKey = key;
+                }
+                if (node != null && node.HasValue("GuiToggleAlt"))
+                {
+                    bool.TryParse(node.GetValue("GuiToggleAlt"), out bool alt);
+                    GuiToggleAlt = alt;
+                }
+                if (node != null && node.HasValue("GuiToggleCtrl"))
+                {
+                    bool.TryParse(node.GetValue("GuiToggleCtrl"), out bool ctrl);
+                    GuiToggleCtrl = ctrl;
+                }
+                if (node != null && node.HasValue("GuiToggleShift"))
+                {
+                    bool.TryParse(node.GetValue("GuiToggleShift"), out bool shift);
+                    GuiToggleShift = shift;
+                }
+                if (node != null && node.HasValue("EnableToolbarButton"))
+                {
+                    bool.TryParse(node.GetValue("EnableToolbarButton"), out bool enableToolbarButton);
+                    _hasUserToolbarButtonOverride = true;
+                    _userToolbarButtonValue = enableToolbarButton;
+                    EnableToolbarButton = enableToolbarButton;
+                }
             }
             FontSize = System.Math.Max(FONT_SIZE_MIN, System.Math.Min(FONT_SIZE_MAX, FontSize));
+            if (GuiToggleKey == KeyCode.None)
+                GuiToggleKey = KeyCode.O;
         }
 
         /// <summary>Saves per-user UI settings to PluginData/config.xml.</summary>
@@ -130,6 +180,11 @@ namespace OrbitalKeeper
 
             var node = new ConfigNode("ORBITAL_KEEPER_USER_SETTINGS");
             node.AddValue("FontSize", FontSize);
+            node.AddValue("GuiToggleKey", GuiToggleKey.ToString());
+            node.AddValue("GuiToggleAlt", GuiToggleAlt);
+            node.AddValue("GuiToggleCtrl", GuiToggleCtrl);
+            node.AddValue("GuiToggleShift", GuiToggleShift);
+            node.AddValue("EnableToolbarButton", EnableToolbarButton);
             node.Save(path);
         }
 
