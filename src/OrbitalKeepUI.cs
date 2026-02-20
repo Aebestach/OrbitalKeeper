@@ -680,7 +680,7 @@ namespace OrbitalKeeper
                 GUILayout.Label(Loc.Format(Loc.FleetInfoLine,
                     FormatAltitude(data.TargetApoapsis),
                     FormatAltitude(data.TargetPeriapsis),
-                    data.TotalDeltaVSpent.ToString("F1")), _labelStyle);
+                    data.TotalDeltaVSpent.ToString("F2")), _labelStyle);
 
                 GUILayout.EndVertical();
                 Rect entryRect = GUILayoutUtility.GetLastRect();
