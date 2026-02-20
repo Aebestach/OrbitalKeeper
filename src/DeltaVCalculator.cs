@@ -50,6 +50,7 @@ namespace OrbitalKeeper
             double currentPe = orbit.PeA;
             double currentInc = orbit.inclination;
             double currentEcc = orbit.eccentricity;
+            double targetEcc = CalculateEccentricityFromApPe(data.TargetApoapsis, data.TargetPeriapsis, body);
 
             // Tolerance fraction
             double tolFrac = data.Tolerance / 100.0;
@@ -57,7 +58,7 @@ namespace OrbitalKeeper
             bool apDrifted = IsOutOfTolerance(currentAp, data.TargetApoapsis, tolFrac);
             bool peDrifted = IsOutOfTolerance(currentPe, data.TargetPeriapsis, tolFrac);
             bool incDrifted = IsOutOfToleranceAbsolute(currentInc, data.TargetInclination, tolFrac);
-            bool eccDrifted = IsOutOfToleranceAbsolute(currentEcc, data.TargetEccentricity, tolFrac);
+            bool eccDrifted = IsOutOfToleranceAbsolute(currentEcc, targetEcc, tolFrac);
 
             string desc = "";
 
@@ -71,7 +72,7 @@ namespace OrbitalKeeper
 
                 if (apDrifted) desc += Loc.Format(Loc.DescApDrift, currentAp.ToString("F0"), data.TargetApoapsis.ToString("F0")) + " ";
                 if (peDrifted) desc += Loc.Format(Loc.DescPeDrift, currentPe.ToString("F0"), data.TargetPeriapsis.ToString("F0")) + " ";
-                if (eccDrifted) desc += Loc.Format(Loc.DescEccDrift, currentEcc.ToString("F4"), data.TargetEccentricity.ToString("F4")) + " ";
+                if (eccDrifted) desc += Loc.Format(Loc.DescEccDrift, currentEcc.ToString("F4"), targetEcc.ToString("F4")) + " ";
             }
 
             // --- Inclination correction ---
@@ -226,6 +227,21 @@ namespace OrbitalKeeper
             }
 
             return Math.Abs(current - target) > absTolerance;
+        }
+
+        private static double CalculateEccentricityFromApPe(
+            double apoapsisAltitude, double periapsisAltitude, CelestialBody body)
+        {
+            if (body == null)
+                return 0;
+
+            double rAp = apoapsisAltitude + body.Radius;
+            double rPe = periapsisAltitude + body.Radius;
+            double denom = rAp + rPe;
+            if (denom <= 0)
+                return 0;
+
+            return Math.Max(0.0, (rAp - rPe) / denom);
         }
 
         /// <summary>
