@@ -20,7 +20,7 @@
 自动轨道维持仅对**未加载**的载具生效；正在使用的载具可通过 UI 进行手动修正。
 
 <div align="center">
-    <img src="https://imgur.com/vvCp2Ml.jpg" alt="UI Screenshot" width="1000" />
+    <img src="https://imgur.com/ZPACZWU.jpg" alt="UI Screenshot" width="1000" />
 </div>
 
 ## ✨ 功能特性
