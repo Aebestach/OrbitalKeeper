@@ -1,0 +1,25 @@
+{
+    "NAME": "Orbital Keeper",
+    "URL": "https://raw.githubusercontent.com/Aebestach/OrbitalKeeper/refs/heads/master/GameData/OrbitalKeeper/OrbitalKeeper.version",
+    "DOWNLOAD": "https://github.com/Aebestach/OrbitalKeeper/releases",
+    "GITHUB": {
+        "USERNAME": "Aebestach",
+        "REPOSITORY": "OrbitalKeeper"
+    },
+    "VERSION": {
+        "MAJOR": 2,
+        "MINOR": 1,
+        "PATCH": 1,
+        "BUILD": 0
+    },
+    "KSP_VERSION_MIN": {
+        "MAJOR": 1,
+        "MINOR": 11,
+        "PATCH": 0
+    },
+    "KSP_VERSION_MAX": {
+        "MAJOR": 1,
+        "MINOR": 12,
+        "PATCH": 99
+    }
+}

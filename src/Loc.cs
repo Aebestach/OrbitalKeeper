@@ -113,6 +113,8 @@ namespace OrbitalKeeper
         public static string FleetInfoLine = "Ap: <<1>> | Pe: <<2>> | Δv: <<3>>m/s";
         public static string FleetBodyFilter = "Body:";
         public static string FleetBodyAll = "All Bodies";
+        public static string FleetBodyPickerTitle = "Select Body";
+        public static string FleetBodyPickerClose = "Close";
         public static string DebrisOnly = "Debris Only";
         public static string DebrisAll = "All Vessels";
         public static string DebrisHide = "No Debris";
@@ -246,6 +248,8 @@ namespace OrbitalKeeper
             FleetInfoLine = Get("#LOC_OrbKeep_FleetInfoLine", FleetInfoLine);
             FleetBodyFilter = Get("#LOC_OrbKeep_FleetBodyFilter", FleetBodyFilter);
             FleetBodyAll = Get("#LOC_OrbKeep_FleetBodyAll", FleetBodyAll);
+            FleetBodyPickerTitle = Get("#LOC_OrbKeep_FleetBodyPickerTitle", FleetBodyPickerTitle);
+            FleetBodyPickerClose = Get("#LOC_OrbKeep_FleetBodyPickerClose", FleetBodyPickerClose);
             DebrisOnly = Get("#LOC_OrbKeep_DebrisOnly", DebrisOnly);
             DebrisAll = Get("#LOC_OrbKeep_DebrisAll", DebrisAll);
             DebrisHide = Get("#LOC_OrbKeep_DebrisHide", DebrisHide);

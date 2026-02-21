@@ -31,12 +31,18 @@ namespace OrbitalKeeper
         private string[] cachedBodyFilterOptions = Array.Empty<string>();
         private int bodyFilterIndex;
         private int lastBodyFilterIndex = -1;
+        private bool showBodyPickerPopup;
+        private Vector2 bodyPickerScrollPos;
+        private Rect bodyPickerRect;
 
         private const int WINDOW_ID = 0x4F4B_0001; // "OK" prefix
         private const int FLEET_WINDOW_ID = 0x4F4B_0002;
+        private const int BODY_PICKER_WINDOW_ID = 0x4F4B_0003;
         private const float BASE_FONT_SIZE = 12f;
         private const float BASE_MAIN_WIDTH = 420f;
         private const float BASE_FLEET_WIDTH = 350f;
+        private const float BODY_PICKER_HEIGHT = 360f;
+        private const float BODY_PICKER_MAX_WIDTH = 380f;
 
         // --- AppLauncher ---
         private ApplicationLauncherButton appButton;
@@ -330,6 +336,47 @@ namespace OrbitalKeeper
             {
                 fleetWindowRect = ClickThruBlocker.GUILayoutWindow(FLEET_WINDOW_ID, fleetWindowRect, DrawFleetWindow,
                     Loc.FleetWindowTitle, _windowStyle, GUILayout.MinWidth(GetFleetMinWidth()));
+            }
+
+            if (showBodyPickerPopup)
+            {
+                if (!showFleetView)
+                {
+                    showBodyPickerPopup = false;
+                    bodyPickerRect = new Rect(0, 0, 0, 0);
+                }
+                else
+                {
+                    float scale = OrbitalKeepSettings.FontSize / BASE_FONT_SIZE;
+                    float maxWidth = Mathf.Round(BODY_PICKER_MAX_WIDTH * scale);
+                    float lineHeight = OrbitalKeepSettings.FontSize + 16f;
+                    float contentHeight = cachedBodyFilterOptions.Length * lineHeight + 4f;
+                    float scrollHeight = Mathf.Min(contentHeight, BODY_PICKER_HEIGHT);
+                    float pickerHeight = scrollHeight + 50f;
+                    float contentWidth = 40f;
+                    GUIStyle measureStyle = _labelStyle ?? GUI.skin.label;
+                    foreach (string opt in cachedBodyFilterOptions)
+                    {
+                        float w = measureStyle.CalcSize(new GUIContent(opt)).x + 24f;
+                        if (w > contentWidth) contentWidth = w;
+                    }
+                    float titleWidth = measureStyle.CalcSize(new GUIContent(Loc.FleetBodyPickerTitle)).x + 60f;
+                    if (titleWidth > contentWidth) contentWidth = titleWidth;
+                    float pickerWidth = Mathf.Min(contentWidth, maxWidth);
+
+                    if (bodyPickerRect.width <= 0 || bodyPickerRect.height <= 0)
+                    {
+                        bodyPickerRect = new Rect(
+                            (Screen.width - pickerWidth) * 0.5f,
+                            (Screen.height - pickerHeight) * 0.5f,
+                            pickerWidth,
+                            pickerHeight);
+                    }
+                    bodyPickerRect = ClickThruBlocker.GUILayoutWindow(BODY_PICKER_WINDOW_ID, bodyPickerRect, DrawBodyPickerPopup,
+                        Loc.FleetBodyPickerTitle, _windowStyle, GUILayout.Width(pickerWidth), GUILayout.Height(pickerHeight));
+                    if (!showBodyPickerPopup)
+                        bodyPickerRect = new Rect(0, 0, 0, 0);
+                }
             }
         }
 
@@ -635,7 +682,9 @@ namespace OrbitalKeeper
             GUILayout.Space(2);
 
             GUILayout.BeginHorizontal();
+            GUILayout.Space(8f);
             debrisVisibility = DrawDebrisVisibilityToggle(debrisVisibility);
+            GUILayout.Space(8f);
             GUILayout.FlexibleSpace();
             RefreshFleetEntriesIfNeeded(debrisVisibility);
             GUILayout.Label(
@@ -767,26 +816,54 @@ namespace OrbitalKeeper
         private void DrawBodyFilter()
         {
             RefreshBodyFilterOptionsIfNeeded();
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(Loc.FleetBodyFilter, _labelStyle, GUILayout.Width(GetLabelWidth()));
-            int optionCount = cachedBodyFilterOptions.Length;
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button("<", _buttonStyle, GUILayout.ExpandWidth(false)))
+            string buttonText = GetCurrentBodyFilterLabel();
+            float textMaxWidth = GetBodyFilterTextMaxWidth();
+            string displayText = TruncateWithEllipsis(buttonText, textMaxWidth, _labelStyle ?? GUI.skin.label);
+            float buttonWidth = GetBodyFilterButtonWidth();
+
+            float lineHeight = OrbitalKeepSettings.FontSize + 8f;
+            GUILayout.BeginHorizontal(GUILayout.Height(lineHeight));
+            GUILayout.Label(Loc.FleetBodyFilter, _labelStyle, GUILayout.ExpandWidth(false), GUILayout.Height(lineHeight));
+            if (GUILayout.Button(displayText, _buttonStyle, GUILayout.Width(buttonWidth), GUILayout.Height(lineHeight)))
             {
-                if (optionCount > 0)
-                {
-                    bodyFilterIndex = (bodyFilterIndex - 1 + optionCount) % optionCount;
-                }
-            }
-            GUILayout.Label(GetCurrentBodyFilterLabel(), _labelStyle, GUILayout.ExpandWidth(false));
-            if (GUILayout.Button(">", _buttonStyle, GUILayout.ExpandWidth(false)))
-            {
-                if (optionCount > 0)
-                {
-                    bodyFilterIndex = (bodyFilterIndex + 1) % optionCount;
-                }
+                showBodyPickerPopup = true;
             }
             GUILayout.EndHorizontal();
+        }
+
+        private void DrawBodyPickerPopup(int id)
+        {
+            GUILayout.BeginVertical();
+            GUILayout.Space(4);
+
+            float maxContentWidth = Mathf.Round((BODY_PICKER_MAX_WIDTH - 24f) * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            float lineHeight = OrbitalKeepSettings.FontSize + 16f;
+            float contentHeight = cachedBodyFilterOptions.Length * lineHeight + 4f;
+            float maxScrollHeight = Mathf.Max(60f, Mathf.Min(contentHeight, BODY_PICKER_HEIGHT));
+            bodyPickerScrollPos = GUILayout.BeginScrollView(bodyPickerScrollPos, false, true, GUILayout.MaxHeight(maxScrollHeight));
+
+            for (int i = 0; i < cachedBodyFilterOptions.Length; i++)
+            {
+                string optionText = cachedBodyFilterOptions[i];
+                string displayText = TruncateWithEllipsis(optionText, maxContentWidth, _labelStyle ?? GUI.skin.label);
+
+                if (GUILayout.Button(displayText, _buttonStyle, GUILayout.ExpandWidth(true)))
+                {
+                    bodyFilterIndex = i;
+                    showBodyPickerPopup = false;
+                }
+            }
+
+            GUILayout.EndScrollView();
+            GUILayout.Space(4);
+
+            if (GUILayout.Button(Loc.FleetBodyPickerClose, _buttonStyle))
+            {
+                showBodyPickerPopup = false;
+            }
+
+            GUILayout.EndVertical();
+            GUI.DragWindow(new Rect(0, 0, 10000, 28));
         }
 
         private void RefreshBodyFilterOptionsIfNeeded()
@@ -855,7 +932,7 @@ namespace OrbitalKeeper
         private DebrisVisibility DrawDebrisVisibilityToggle(DebrisVisibility current)
         {
             string[] options = { Loc.DebrisOnly, Loc.DebrisAll, Loc.DebrisHide };
-            int selected = GUILayout.Toolbar((int)current, options, _buttonStyle);
+            int selected = GUILayout.Toolbar((int)current, options, _buttonStyle, GUILayout.ExpandWidth(false));
             return (DebrisVisibility)selected;
         }
 
@@ -1110,6 +1187,23 @@ namespace OrbitalKeeper
             return GUILayout.Toggle(expanded, $"{marker} {title}", _buttonStyle);
         }
 
+        private static string TruncateWithEllipsis(string text, float maxWidth, GUIStyle style)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+            GUIContent content = new GUIContent(text);
+            if (style.CalcSize(content).x <= maxWidth) return text;
+            const string ellipsis = "...";
+            float ellipsisWidth = style.CalcSize(new GUIContent(ellipsis)).x;
+            float available = maxWidth - ellipsisWidth;
+            for (int i = text.Length - 1; i > 0; i--)
+            {
+                string truncated = text.Substring(0, i);
+                if (style.CalcSize(new GUIContent(truncated)).x <= available)
+                    return truncated + ellipsis;
+            }
+            return ellipsis;
+        }
+
         private static string FormatAltitude(double altitudeMeters)
         {
             if (Math.Abs(altitudeMeters) >= 1e9)
@@ -1187,6 +1281,26 @@ namespace OrbitalKeeper
             return Mathf.Round(80f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
         }
 
+        /// <summary>
+        /// Text width for truncation; based on "All Bodies" at current font size (no padding).
+        /// Longer names are truncated with "..".
+        /// </summary>
+        private static float GetBodyFilterTextMaxWidth()
+        {
+            GUIStyle style = _labelStyle ?? GUI.skin.label;
+            return Mathf.Round(style.CalcSize(new GUIContent(Loc.FleetBodyAll)).x);
+        }
+
+        /// <summary>
+        /// Total width for body filter button: base text width + internal left/right padding.
+        /// Button is fixed at this width, right-aligned.
+        /// </summary>
+        private static float GetBodyFilterButtonWidth()
+        {
+            float textWidth = GetBodyFilterTextMaxWidth();
+            return Mathf.Round(textWidth + 16f); // 8px padding on each side inside button
+        }
+
 
         private static string FormatTime(double seconds)
         {
@@ -1235,7 +1349,7 @@ namespace OrbitalKeeper
             _labelStyle = new GUIStyle(GUI.skin.label) { fontSize = size };
             _boldStyle = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = FontStyle.Bold };
             _richStyle = new GUIStyle(GUI.skin.label) { fontSize = size, richText = true };
-            _buttonStyle = new GUIStyle(GUI.skin.button);
+            _buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = size };
             _toggleStyle = new GUIStyle(GUI.skin.toggle) { fontSize = size };
             _textFieldStyle = new GUIStyle(GUI.skin.textField) { fontSize = size };
             _boxStyle = new GUIStyle(GUI.skin.box) { fontSize = size };

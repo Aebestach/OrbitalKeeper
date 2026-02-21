@@ -20,7 +20,7 @@
 Automatic station-keeping runs for **unloaded** vessels in the background. Loaded vessels can be corrected manually from the UI.
 
 <div align="center">
-    <img src="https://imgur.com/ZPACZWU.jpg" alt="UI Screenshot" width="1000" />
+    <img src="https://imgur.com/2gvRCTA.jpg" alt="UI Screenshot"/>
 </div>
 
 ## ✨ Features
@@ -45,6 +45,10 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 
 *   ❌ **Principia** : Not supported.
 *   ✅ **Space Weather & Atmospheric Orbital Decay** : Recommended [SWAOD](https://forum.kerbalspaceprogram.com/topic/229637-112x-space-weather-atmospheric-orbital-decay-swaod/)
+
+## 📦 Dependencies
+
+*   **Click Through Blocker**
 
 ## 📥 Installation
 
