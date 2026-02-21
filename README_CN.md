@@ -20,7 +20,7 @@
 自动轨道维持仅对**未加载**的载具生效；正在使用的载具可通过 UI 进行手动修正。
 
 <div align="center">
-    <img src="https://imgur.com/ZPACZWU.jpg" alt="UI Screenshot" width="1000" />
+    <img src="https://imgur.com/2gvRCTA.jpg" alt="UI Screenshot"/>
 </div>
 
 ## ✨ 功能特性
@@ -45,6 +45,10 @@
 
 *   ❌ **Principia** : 不支持.
 *   ✅ **Space Weather & Atmospheric Orbital Decay** : 推荐[SWAOD](https://forum.kerbalspaceprogram.com/topic/229637-112x-space-weather-atmospheric-orbital-decay-swaod/)
+
+## 📦 依赖
+
+*   **Click Through Blocker**
 
 ## 📥 安装说明
 
