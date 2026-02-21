@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using KSP.UI.Screens;
 using KSP.Localization;
+using ClickThroughFix;
 
 namespace OrbitalKeeper
 {
@@ -322,12 +323,12 @@ namespace OrbitalKeeper
             }
             UpdateFleetWindowWidth();
 
-            windowRect = GUILayout.Window(WINDOW_ID, windowRect, DrawMainWindow,
+            windowRect = ClickThruBlocker.GUILayoutWindow(WINDOW_ID, windowRect, DrawMainWindow,
                 Loc.WindowTitle, _windowStyle, GUILayout.MinWidth(GetMainMinWidth()));
 
             if (showFleetView)
             {
-                fleetWindowRect = GUILayout.Window(FLEET_WINDOW_ID, fleetWindowRect, DrawFleetWindow,
+                fleetWindowRect = ClickThruBlocker.GUILayoutWindow(FLEET_WINDOW_ID, fleetWindowRect, DrawFleetWindow,
                     Loc.FleetWindowTitle, _windowStyle, GUILayout.MinWidth(GetFleetMinWidth()));
             }
         }
