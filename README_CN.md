@@ -1,4 +1,5 @@
 # Orbital Keeper - Station Keeping
+# 轨道守护者
 
 <div align="center">
 
@@ -13,7 +14,7 @@
 
 ---
 
-## 📖 简介
+## 简介
 
 **轨道守护者** 是一款用于 **Kerbal Space Program (KSP)** 的轨道维持模组，通过自动执行轨道修正，抵消由轨道衰减带来的影响。
 
@@ -23,38 +24,38 @@
     <img src="https://imgur.com/2gvRCTA.jpg" alt="UI Screenshot"/>
 </div>
 
-## ✨ 功能特性
+## 功能特性
 
-*   **🛰️ 后台轨道维持**
+*   **后台轨道维持**
     *   按可配置的时间间隔检查轨道，并对未加载载具执行修正。
-*   **🧭 已加载载具手动修正**
+*   **已加载载具手动修正**
     *   在飞行中通过 UI 中的手动修正进行修正，保持可控性。
-*   **⚙️ 单载具配置**
+*   **单载具配置**
     *   设置目标远地点/近地点/倾角。
     *   调整容差、检查间隔、引擎选择模式。
-*   **🔋 资源感知修正**
+*   **资源感知修正**
     *   按所需 Δv 消耗推进剂与电量。
     *   引擎不可用或资源不足时给出提示。
     *   未加载载具的资源统计不区分连通性，不受“允许相互供应”影响。
-*   **📋 载具总览**
+*   **载具总览**
     *   查看在轨/次轨载具的状态、目标轨道与累计 Δv 消耗。
-*   **🛡️ 安全限制**
+*   **安全限制**
     *   限制单次修正 Δv 上限，并在目标近地点过低时显示警告。
 
-## 🧩 兼容性
+## 兼容性
 
 *   ❌ **Principia** : 不支持.
 *   ✅ **Space Weather & Atmospheric Orbital Decay** : 推荐[SWAOD](https://forum.kerbalspaceprogram.com/topic/229637-112x-space-weather-atmospheric-orbital-decay-swaod/)
 
-## 📦 依赖
+## 依赖
 
 *   **Click Through Blocker**
 
-## 📥 安装说明
+## 安装说明
 
 1.  将 `GameData/OrbitalKeeper` 文件夹复制到 KSP 安装目录的 `GameData` 中。
 
-## 🎮 使用指南
+## 使用指南
 
 ### 打开 UI
 
@@ -80,7 +81,7 @@
 *   **Vessel Overview** 显示已跟踪载具与状态。
 *   **Remove Keeping** 清除该载具的轨道维持数据。
 
-## ⚙️ 配置
+## 配置
 
 全局默认值位于：
 `GameData/OrbitalKeeper/OrbitalKeeper.cfg`

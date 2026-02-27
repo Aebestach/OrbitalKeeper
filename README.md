@@ -13,7 +13,7 @@
 
 ---
 
-## 📖 Introduction
+## Introduction
 
 **Orbital Keeper** is a **Kerbal Space Program (KSP)** mod that keeps orbits stable by automatically performing orbit corrections to counter decay-driven orbital lowering.
 
@@ -23,38 +23,38 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
     <img src="https://imgur.com/2gvRCTA.jpg" alt="UI Screenshot"/>
 </div>
 
-## ✨ Features
+## Features
 
-*   **🛰️ Background station-keeping**
+*   **Background station-keeping**
     *   Checks orbit drift at a configurable interval and applies corrections for unloaded vessels.
-*   **🧭 Manual correction for loaded vessels**
+*   **Manual correction for loaded vessels**
     *   Trigger a correction with the UI’s Manual Correct action for direct control in-flight.
-*   **⚙️ Per-vessel configuration**
+*   **Per-vessel configuration**
     *   Set target Ap/Pe/Inclination.
     *   Adjust tolerance, check interval, and engine selection mode.
-*   **🔋 Resource-aware corrections**
+*   **Resource-aware corrections**
     *   Consumes propellant and Electric Charge based on required delta-v.
     *   Warns when no eligible engine or insufficient resources are available.
     *   Unloaded vessels do not model resource connectivity; blockages are ignored.
-*   **📋 Vessel overview**
+*   **Vessel overview**
     *   View on-orbit/sub-orbit vehicle status, target orbit and accumulated Δv consumption.
-*   **🛡️ Safety limits**
+*   **Safety limits**
     *   Caps maximum correction delta-v and warns if target periapsis is too low.
 
-## 🧩 Compatibility
+## Compatibility
 
 *   ❌ **Principia** : Not supported.
 *   ✅ **Space Weather & Atmospheric Orbital Decay** : Recommended [SWAOD](https://forum.kerbalspaceprogram.com/topic/229637-112x-space-weather-atmospheric-orbital-decay-swaod/)
 
-## 📦 Dependencies
+## Dependencies
 
 *   **Click Through Blocker**
 
-## 📥 Installation
+## Installation
 
 1.  Copy the `GameData/OrbitalKeeper` folder into your KSP installation’s `GameData` directory.
 
-## 🎮 Usage Guide
+## Usage Guide
 
 ### Open the UI
 
@@ -80,7 +80,7 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 *   **Vessel Overview** lists tracked vessels and their statuses.
 *   **Remove Keeping** clears station-keeping data for the vessel.
 
-## ⚙️ Configuration
+## Configuration
 
 Global defaults are stored in:
 `GameData/OrbitalKeeper/OrbitalKeeper.cfg`
