@@ -17,5 +17,4 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyVersion("2.1.2")]
 [assembly: AssemblyFileVersion("2.1.2")]
 
-// Ensure ClickThroughBlocker loads before OrbitalKeeper (fixes UI click-through)
 [assembly: KSPAssemblyDependency("ClickThroughBlocker", 1, 0)]
