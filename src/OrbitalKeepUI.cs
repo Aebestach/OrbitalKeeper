@@ -29,6 +29,7 @@ namespace OrbitalKeeper
         private int cachedFilteredCount;
         private List<CelestialBody> cachedBodyFilterBodies = new List<CelestialBody>();
         private string[] cachedBodyFilterOptions = Array.Empty<string>();
+        private bool bodyFilterOptionsInitialized;
         private int bodyFilterIndex;
         private int lastBodyFilterIndex = -1;
         private bool showBodyPickerPopup;
@@ -876,6 +877,9 @@ namespace OrbitalKeeper
 
         private void RefreshBodyFilterOptionsIfNeeded()
         {
+            if (bodyFilterOptionsInitialized)
+                return;
+
             if (FlightGlobals.Bodies == null || FlightGlobals.Bodies.Count == 0)
             {
                 cachedBodyFilterBodies.Clear();
@@ -883,9 +887,6 @@ namespace OrbitalKeeper
                 bodyFilterIndex = Mathf.Clamp(bodyFilterIndex, 0, cachedBodyFilterOptions.Length - 1);
                 return;
             }
-
-            if (cachedBodyFilterBodies.Count == FlightGlobals.Bodies.Count && cachedBodyFilterOptions.Length > 0)
-                return;
 
             cachedBodyFilterBodies = new List<CelestialBody>(FlightGlobals.Bodies);
             List<string> options = new List<string>(cachedBodyFilterBodies.Count + 1);
@@ -897,6 +898,7 @@ namespace OrbitalKeeper
             }
             cachedBodyFilterOptions = options.ToArray();
             bodyFilterIndex = Mathf.Clamp(bodyFilterIndex, 0, cachedBodyFilterOptions.Length - 1);
+            bodyFilterOptionsInitialized = true;
         }
 
         private CelestialBody GetSelectedBody()
