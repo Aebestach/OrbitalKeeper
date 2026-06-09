@@ -55,7 +55,10 @@ namespace OrbitalKeeper
 
             // 2. Find eligible engine (unloaded path)
             ResourceManager.EngineInfo engineInfo =
-                ResourceManager.FindBestEngineUnloaded(vessel.protoVessel, data.EngineMode);
+                ResourceManager.FindBestEngineUnloaded(
+                    vessel.protoVessel,
+                    data.EngineMode,
+                    data.AllowRcsEngines);
 
             if (!engineInfo.Found)
             {
@@ -183,9 +186,15 @@ namespace OrbitalKeeper
             // Find engine
             ResourceManager.EngineInfo engineInfo;
             if (vessel.loaded)
-                engineInfo = ResourceManager.FindBestEngine(vessel, keepData.EngineMode);
+                engineInfo = ResourceManager.FindBestEngine(
+                    vessel,
+                    keepData.EngineMode,
+                    keepData.AllowRcsEngines);
             else
-                engineInfo = ResourceManager.FindBestEngineUnloaded(vessel.protoVessel, keepData.EngineMode);
+                engineInfo = ResourceManager.FindBestEngineUnloaded(
+                    vessel.protoVessel,
+                    keepData.EngineMode,
+                    keepData.AllowRcsEngines);
 
             LastEngineInfo = engineInfo;
 
@@ -305,9 +314,15 @@ namespace OrbitalKeeper
             // Check engine and resources
             ResourceManager.EngineInfo engineInfo;
             if (vessel.loaded)
-                engineInfo = ResourceManager.FindBestEngine(vessel, keepData.EngineMode);
+                engineInfo = ResourceManager.FindBestEngine(
+                    vessel,
+                    keepData.EngineMode,
+                    keepData.AllowRcsEngines);
             else
-                engineInfo = ResourceManager.FindBestEngineUnloaded(vessel.protoVessel, keepData.EngineMode);
+                engineInfo = ResourceManager.FindBestEngineUnloaded(
+                    vessel.protoVessel,
+                    keepData.EngineMode,
+                    keepData.AllowRcsEngines);
 
             LastEngineInfo = engineInfo;
 
