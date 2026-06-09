@@ -23,6 +23,7 @@ namespace OrbitalKeeper
             public double Isp;
             public double MixtureDensity;
             public List<PropellantInfo> Propellants;
+            public bool IsRcs;
         }
 
         private static readonly Dictionary<string, PartPrefabCacheEntry> PartPrefabCache =
@@ -45,6 +46,8 @@ namespace OrbitalKeeper
             public List<PropellantInfo> Propellants;
             /// <summary>Mixture density of the engine's propellants (kg/unit).</summary>
             public double MixtureDensity;
+            /// <summary>Whether the selected engine is an RCS thruster.</summary>
+            public bool IsRcs;
         }
 
         /// <summary>
@@ -73,6 +76,19 @@ namespace OrbitalKeeper
             public string ShortageDescription;
         }
 
+        /// <summary>
+        /// Non-consuming resource budget for repeated station-keeping corrections.
+        /// </summary>
+        public struct ResourceBudgetResult
+        {
+            public double RequiredEC;
+            public double AvailableEC;
+            public double RequiredFuelMass;
+            public double AvailableFuelMass;
+            public double AvailableCorrections;
+            public string LimitingResource;
+        }
+
         // ======================================================================
         //  ENGINE SEARCH
         // ======================================================================
@@ -80,15 +96,18 @@ namespace OrbitalKeeper
         /// <summary>
         /// Finds the best eligible engine on a loaded vessel.
         /// </summary>
-        public static EngineInfo FindBestEngine(Vessel vessel, EngineSelectionMode mode)
+        public static EngineInfo FindBestEngine(
+            Vessel vessel,
+            EngineSelectionMode mode,
+            bool allowRcs = false)
         {
             var result = new EngineInfo { Propellants = new List<PropellantInfo>() };
 
             if (vessel == null || vessel.parts == null)
                 return result;
 
-            double bestIsp = -1;
-            ModuleEngines bestEngine = null;
+            double bestIsp = -1.0;
+            EngineInfo best = result;
 
             foreach (Part part in vessel.parts)
             {
@@ -98,48 +117,129 @@ namespace OrbitalKeeper
                         continue;
 
                     double isp = engine.atmosphereCurve.Evaluate(0f);
-                    if (isp > bestIsp)
-                    {
-                        bestIsp = isp;
-                        bestEngine = engine;
-                    }
+                    TryUpdateBestEngine(
+                        isp,
+                        engine.mixtureDensity,
+                        engine.propellants,
+                        false,
+                        ref bestIsp,
+                        ref best);
+                }
+
+                if (!allowRcs)
+                    continue;
+
+                foreach (ModuleRCS rcs in part.FindModulesImplementing<ModuleRCS>())
+                {
+                    if (!IsRcsEligible(rcs, mode, vessel))
+                        continue;
+
+                    TryUpdateBestEngine(
+                        GetRcsVacuumIsp(rcs),
+                        0.0,
+                        rcs.propellants,
+                        true,
+                        ref bestIsp,
+                        ref best);
+                }
+
+                foreach (ModuleRCSFX rcsFx in part.FindModulesImplementing<ModuleRCSFX>())
+                {
+                    if (!IsRcsFxEligible(rcsFx, mode, vessel))
+                        continue;
+
+                    TryUpdateBestEngine(
+                        GetRcsFxVacuumIsp(rcsFx),
+                        rcsFx.mixtureDensity,
+                        rcsFx.propellants,
+                        true,
+                        ref bestIsp,
+                        ref best);
                 }
             }
 
-            if (bestEngine == null)
+            return best;
+        }
+
+        /// <summary>
+        /// Finds the best installed engine in the editor. Editor crafts do not have
+        /// ignited/shutdown runtime state, so every configured engine is eligible.
+        /// </summary>
+        public static EngineInfo FindBestEngineInEditor(ShipConstruct ship, bool allowRcs = false)
+        {
+            var result = new EngineInfo { Propellants = new List<PropellantInfo>() };
+
+            if (ship?.parts == null)
                 return result;
 
-            result.Found = true;
-            result.Isp = bestIsp;
-            result.MixtureDensity = bestEngine.mixtureDensity;
+            double bestIsp = -1.0;
+            EngineInfo best = result;
 
-            foreach (Propellant p in bestEngine.propellants)
+            foreach (Part part in ship.parts)
             {
-                // Skip ElectricCharge in propellant list (handled separately)
-                if (p.name == "ElectricCharge")
+                foreach (ModuleEngines engine in part.FindModulesImplementing<ModuleEngines>())
+                {
+                    if (engine?.atmosphereCurve == null)
+                        continue;
+
+                    TryUpdateBestEngine(
+                        engine.atmosphereCurve.Evaluate(0f),
+                        engine.mixtureDensity,
+                        engine.propellants,
+                        false,
+                        ref bestIsp,
+                        ref best);
+                }
+
+                if (!allowRcs)
                     continue;
 
-                result.Propellants.Add(new PropellantInfo
+                foreach (ModuleRCS rcs in part.FindModulesImplementing<ModuleRCS>())
                 {
-                    Name = p.name,
-                    Ratio = p.ratio
-                });
+                    if (rcs == null || !rcs.moduleIsEnabled)
+                        continue;
+
+                    TryUpdateBestEngine(
+                        GetRcsVacuumIsp(rcs),
+                        0.0,
+                        rcs.propellants,
+                        true,
+                        ref bestIsp,
+                        ref best);
+                }
+
+                foreach (ModuleRCSFX rcsFx in part.FindModulesImplementing<ModuleRCSFX>())
+                {
+                    if (rcsFx == null || !rcsFx.moduleIsEnabled)
+                        continue;
+
+                    TryUpdateBestEngine(
+                        GetRcsFxVacuumIsp(rcsFx),
+                        rcsFx.mixtureDensity,
+                        rcsFx.propellants,
+                        true,
+                        ref bestIsp,
+                        ref best);
+                }
             }
 
-            return result;
+            return best;
         }
 
         /// <summary>
         /// Finds the best eligible engine on an unloaded vessel via ProtoVessel.
         /// </summary>
-        public static EngineInfo FindBestEngineUnloaded(ProtoVessel protoVessel, EngineSelectionMode mode)
+        public static EngineInfo FindBestEngineUnloaded(
+            ProtoVessel protoVessel,
+            EngineSelectionMode mode,
+            bool allowRcs = false)
         {
             var result = new EngineInfo { Propellants = new List<PropellantInfo>() };
 
             if (protoVessel == null)
                 return result;
 
-            double bestIsp = -1;
+            double bestIsp = -1.0;
             UnloadedEngineCandidate bestCandidate = null;
 
             foreach (ProtoPartSnapshot pp in protoVessel.protoPartSnapshots)
@@ -150,12 +250,21 @@ namespace OrbitalKeeper
 
                 foreach (UnloadedEngineCandidate candidate in candidates)
                 {
+                    if (candidate.IsRcs && !allowRcs)
+                        continue;
                     if (candidate.ModuleIndex < 0 || candidate.ModuleIndex >= pp.modules.Count)
                         continue;
 
                     ProtoPartModuleSnapshot protoModule = pp.modules[candidate.ModuleIndex];
-                    if (!IsEngineEligibleProto(protoModule, mode))
+                    if (candidate.IsRcs)
+                    {
+                        if (!IsRcsEligibleProto(protoModule))
+                            continue;
+                    }
+                    else if (!IsEngineEligibleProto(protoModule, mode))
+                    {
                         continue;
+                    }
 
                     if (candidate.Isp > bestIsp)
                     {
@@ -172,8 +281,115 @@ namespace OrbitalKeeper
             result.Isp = bestCandidate.Isp;
             result.MixtureDensity = bestCandidate.MixtureDensity;
             result.Propellants = new List<PropellantInfo>(bestCandidate.Propellants);
+            result.IsRcs = bestCandidate.IsRcs;
 
             return result;
+        }
+
+        private static void TryUpdateBestEngine(
+            double isp,
+            double mixtureDensity,
+            List<Propellant> propellants,
+            bool isRcs,
+            ref double bestIsp,
+            ref EngineInfo best)
+        {
+            if (isp <= bestIsp)
+                return;
+
+            bestIsp = isp;
+            best = BuildEngineInfo(isp, mixtureDensity, propellants, isRcs);
+        }
+
+        private static EngineInfo BuildEngineInfo(
+            double isp,
+            double mixtureDensity,
+            List<Propellant> propellants,
+            bool isRcs)
+        {
+            var result = new EngineInfo
+            {
+                Found = true,
+                Isp = isp,
+                MixtureDensity = mixtureDensity > 0.0
+                    ? mixtureDensity
+                    : CalculateMixtureDensity(propellants),
+                Propellants = new List<PropellantInfo>(),
+                IsRcs = isRcs
+            };
+
+            if (propellants == null)
+                return result;
+
+            foreach (Propellant propellant in propellants)
+            {
+                if (propellant == null || propellant.name == "ElectricCharge")
+                    continue;
+
+                result.Propellants.Add(new PropellantInfo
+                {
+                    Name = propellant.name,
+                    Ratio = propellant.ratio
+                });
+            }
+
+            return result;
+        }
+
+        private static double GetRcsVacuumIsp(ModuleRCS rcs)
+        {
+            if (rcs == null)
+                return 0.0;
+
+            if (rcs.atmosphereCurve != null)
+            {
+                double isp = rcs.atmosphereCurve.Evaluate(0f);
+                if (isp > 0.0)
+                    return isp;
+            }
+
+            return rcs.realISP > 0.0f ? rcs.realISP : 0.0;
+        }
+
+        private static double GetRcsFxVacuumIsp(ModuleRCSFX rcsFx)
+        {
+            if (rcsFx?.atmosphereCurve == null)
+                return 0.0;
+            return rcsFx.atmosphereCurve.Evaluate(0f);
+        }
+
+        private static bool IsRcsEligible(ModuleRCS rcs, EngineSelectionMode mode, Vessel vessel)
+        {
+            if (rcs == null || !rcs.moduleIsEnabled)
+                return false;
+
+            if (mode == EngineSelectionMode.IgnitedOnly)
+                return vessel != null && vessel.ActionGroups[KSPActionGroup.RCS];
+
+            return true;
+        }
+
+        private static bool IsRcsFxEligible(ModuleRCSFX rcsFx, EngineSelectionMode mode, Vessel vessel)
+        {
+            if (rcsFx == null || !rcsFx.moduleIsEnabled)
+                return false;
+
+            if (mode == EngineSelectionMode.IgnitedOnly)
+                return vessel != null && vessel.ActionGroups[KSPActionGroup.RCS];
+
+            return true;
+        }
+
+        private static bool IsRcsEligibleProto(ProtoPartModuleSnapshot protoModule)
+        {
+            if (protoModule?.moduleValues == null)
+                return false;
+
+            string enabled = protoModule.moduleValues.GetValue("enableState");
+            if (enabled == null)
+                enabled = protoModule.moduleValues.GetValue("moduleIsEnabled");
+
+            return enabled == null || enabled.Equals("True", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -231,6 +447,13 @@ namespace OrbitalKeeper
         //  RESOURCE CHECKING
         // ======================================================================
 
+        private static double GetRequiredEc(double deltaV, EngineInfo engineInfo)
+        {
+            if (!engineInfo.Found || engineInfo.IsRcs || OrbitalKeepSettings.ECPerDeltaV <= 0.0)
+                return 0.0;
+            return deltaV * OrbitalKeepSettings.ECPerDeltaV;
+        }
+
         /// <summary>
         /// Checks if a vessel has sufficient resources for a station-keeping correction.
         /// </summary>
@@ -239,8 +462,7 @@ namespace OrbitalKeeper
         {
             var result = new ResourceCheckResult();
 
-            // Calculate required EC
-            result.RequiredEC = deltaV * OrbitalKeepSettings.ECPerDeltaV;
+            result.RequiredEC = GetRequiredEc(deltaV, engineInfo);
 
             // Calculate required fuel mass
             double totalMass = vessel.loaded ? vessel.GetTotalMass() : GetProtoVesselMass(vessel.protoVessel);
@@ -265,7 +487,7 @@ namespace OrbitalKeeper
             bool propellantSufficient = true;
             string shortage = "";
 
-            if (result.AvailableEC < result.RequiredEC)
+            if (result.RequiredEC > 0.0 && result.AvailableEC < result.RequiredEC)
             {
                 shortage += Loc.Format(Loc.ShortageEC,
                     result.RequiredEC.ToString("F1"), result.AvailableEC.ToString("F1")) + " ";
@@ -307,6 +529,135 @@ namespace OrbitalKeeper
             return result;
         }
 
+        /// <summary>
+        /// Estimates how many corrections can be paid for without consuming resources.
+        /// </summary>
+        public static ResourceBudgetResult EstimateResourceBudget(
+            Vessel vessel, double deltaV, EngineInfo engineInfo)
+        {
+            var result = new ResourceBudgetResult
+            {
+                AvailableCorrections = 0.0,
+                LimitingResource = Loc.Unit_NA
+            };
+
+            if (vessel == null || !engineInfo.Found || deltaV <= 0.0)
+                return result;
+
+            result.RequiredEC = GetRequiredEc(deltaV, engineInfo);
+
+            double totalMass = vessel.loaded ? vessel.GetTotalMass() : GetProtoVesselMass(vessel.protoVessel);
+            result.RequiredFuelMass = DeltaVCalculator.CalculateFuelMass(deltaV, engineInfo.Isp, totalMass);
+
+            double fuelCorrections = double.PositiveInfinity;
+            double availableFuelMass = double.PositiveInfinity;
+
+            if (result.RequiredFuelMass > 1e-12 &&
+                engineInfo.Propellants != null &&
+                engineInfo.Propellants.Count > 0 &&
+                engineInfo.MixtureDensity > 0.0)
+            {
+                foreach (var prop in engineInfo.Propellants)
+                {
+                    if (prop.Ratio <= 0f)
+                        continue;
+
+                    double requiredUnits = result.RequiredFuelMass / engineInfo.MixtureDensity * prop.Ratio;
+                    if (requiredUnits <= 1e-12)
+                        continue;
+
+                    double availableUnits = GetResourceAmount(vessel, prop.Name);
+                    double propCorrections = availableUnits / requiredUnits;
+                    if (propCorrections < fuelCorrections)
+                    {
+                        fuelCorrections = propCorrections;
+                        result.LimitingResource = prop.Name;
+                    }
+
+                    double propFuelMass = availableUnits / prop.Ratio * engineInfo.MixtureDensity;
+                    if (propFuelMass < availableFuelMass)
+                        availableFuelMass = propFuelMass;
+                }
+            }
+
+            if (double.IsPositiveInfinity(availableFuelMass))
+                availableFuelMass = 0.0;
+
+            result.AvailableFuelMass = availableFuelMass;
+            result.AvailableCorrections = double.IsPositiveInfinity(fuelCorrections) ? 0.0 : fuelCorrections;
+
+            if (double.IsNaN(result.AvailableCorrections) || result.AvailableCorrections < 0.0)
+                result.AvailableCorrections = 0.0;
+
+            return result;
+        }
+
+        /// <summary>
+        /// Estimates repeated correction capacity for a craft in the editor.
+        /// Uses currently configured resource amounts on the ship.
+        /// </summary>
+        public static ResourceBudgetResult EstimateEditorResourceBudget(
+            ShipConstruct ship,
+            double deltaV,
+            EngineInfo engineInfo)
+        {
+            var result = new ResourceBudgetResult
+            {
+                AvailableCorrections = 0.0,
+                LimitingResource = Loc.Unit_NA
+            };
+
+            if (ship == null || !engineInfo.Found || deltaV <= 0.0)
+                return result;
+
+            result.RequiredEC = GetRequiredEc(deltaV, engineInfo);
+
+            double totalMass = GetEditorShipMass(ship);
+            result.RequiredFuelMass = DeltaVCalculator.CalculateFuelMass(deltaV, engineInfo.Isp, totalMass);
+
+            double fuelCorrections = double.PositiveInfinity;
+            double availableFuelMass = double.PositiveInfinity;
+
+            if (result.RequiredFuelMass > 1e-12 &&
+                engineInfo.Propellants != null &&
+                engineInfo.Propellants.Count > 0 &&
+                engineInfo.MixtureDensity > 0.0)
+            {
+                foreach (var prop in engineInfo.Propellants)
+                {
+                    if (prop.Ratio <= 0f)
+                        continue;
+
+                    double requiredUnits = result.RequiredFuelMass / engineInfo.MixtureDensity * prop.Ratio;
+                    if (requiredUnits <= 1e-12)
+                        continue;
+
+                    double availableUnits = GetEditorResourceAmount(ship, prop.Name);
+                    double propCorrections = availableUnits / requiredUnits;
+                    if (propCorrections < fuelCorrections)
+                    {
+                        fuelCorrections = propCorrections;
+                        result.LimitingResource = prop.Name;
+                    }
+
+                    double propFuelMass = availableUnits / prop.Ratio * engineInfo.MixtureDensity;
+                    if (propFuelMass < availableFuelMass)
+                        availableFuelMass = propFuelMass;
+                }
+            }
+
+            if (double.IsPositiveInfinity(availableFuelMass))
+                availableFuelMass = 0.0;
+
+            result.AvailableFuelMass = availableFuelMass;
+            result.AvailableCorrections = double.IsPositiveInfinity(fuelCorrections) ? 0.0 : fuelCorrections;
+
+            if (double.IsNaN(result.AvailableCorrections) || result.AvailableCorrections < 0.0)
+                result.AvailableCorrections = 0.0;
+
+            return result;
+        }
+
         // ======================================================================
         //  RESOURCE CONSUMPTION
         // ======================================================================
@@ -322,24 +673,26 @@ namespace OrbitalKeeper
             ecConsumed = 0;
             fuelMassConsumed = 0;
 
-            double requiredEC = deltaV * OrbitalKeepSettings.ECPerDeltaV;
+            double requiredEC = GetRequiredEc(deltaV, engineInfo);
             double totalMass = vessel.loaded ? vessel.GetTotalMass() : GetProtoVesselMass(vessel.protoVessel);
             double requiredFuelMass = DeltaVCalculator.CalculateFuelMass(deltaV, engineInfo.Isp, totalMass);
             string vesselName = vessel != null ? vessel.vesselName : "<null>";
 
-            // Consume EC
-            if (vessel.loaded)
+            if (requiredEC > 0.0)
             {
-                PartResourceDefinition ecDef = GetResourceDefinition("ElectricCharge");
-                if (ecDef != null)
+                if (vessel.loaded)
                 {
-                    double ecTaken = vessel.RequestResource(vessel.rootPart, ecDef.id, requiredEC, true);
-                    ecConsumed = ecTaken;
+                    PartResourceDefinition ecDef = GetResourceDefinition("ElectricCharge");
+                    if (ecDef != null)
+                    {
+                        double ecTaken = vessel.RequestResource(vessel.rootPart, ecDef.id, requiredEC, true);
+                        ecConsumed = ecTaken;
+                    }
                 }
-            }
-            else
-            {
-                ecConsumed = ConsumeProtoResource(vessel.protoVessel, "ElectricCharge", requiredEC);
+                else
+                {
+                    ecConsumed = ConsumeProtoResource(vessel.protoVessel, "ElectricCharge", requiredEC);
+                }
             }
 
             // Consume propellants
@@ -402,6 +755,70 @@ namespace OrbitalKeeper
             return total;
         }
 
+        private static double GetResourceAmount(Vessel vessel, string resourceName)
+        {
+            if (vessel == null || string.IsNullOrEmpty(resourceName))
+                return 0.0;
+
+            if (vessel.loaded)
+            {
+                PartResourceDefinition def = GetResourceDefinition(resourceName);
+                if (def == null)
+                    return 0.0;
+                vessel.GetConnectedResourceTotals(def.id, out double amount, out _);
+                return amount;
+            }
+
+            return GetProtoResourceAmount(vessel.protoVessel, resourceName);
+        }
+
+        public static double GetEditorShipMass(ShipConstruct ship)
+        {
+            double totalMass = 0.0;
+            if (ship?.parts == null)
+                return totalMass;
+
+            foreach (Part part in ship.parts)
+            {
+                if (part == null)
+                    continue;
+
+                totalMass += Math.Max(0.0, part.mass);
+                if (part.Resources == null)
+                    continue;
+
+                foreach (PartResource resource in part.Resources)
+                {
+                    PartResourceDefinition definition = resource?.info;
+                    if (definition == null && resource != null)
+                        definition = GetResourceDefinition(resource.resourceName);
+                    if (definition != null)
+                        totalMass += resource.amount * definition.density;
+                }
+            }
+
+            return totalMass;
+        }
+
+        private static double GetEditorResourceAmount(ShipConstruct ship, string resourceName)
+        {
+            double total = 0.0;
+            if (ship?.parts == null || string.IsNullOrEmpty(resourceName))
+                return total;
+
+            foreach (Part part in ship.parts)
+            {
+                if (part?.Resources == null)
+                    continue;
+
+                PartResource resource = part.Resources[resourceName];
+                if (resource != null)
+                    total += resource.amount;
+            }
+
+            return total;
+        }
+
         /// <summary>
         /// Consumes a specified amount of a resource from a ProtoVessel.
         /// Returns the actual amount consumed.
@@ -432,6 +849,18 @@ namespace OrbitalKeeper
             }
 
             return amount - remaining;
+        }
+
+        /// <summary>
+        /// Returns the total mass of a vessel in tonnes (loaded or unloaded).
+        /// </summary>
+        public static double GetVesselMass(Vessel vessel)
+        {
+            if (vessel == null)
+                return 0.0;
+            if (vessel.loaded)
+                return vessel.GetTotalMass();
+            return GetProtoVesselMass(vessel.protoVessel);
         }
 
         /// <summary>
@@ -511,33 +940,101 @@ namespace OrbitalKeeper
             {
                 for (int moduleIndex = 0; moduleIndex < prefab.Modules.Count; moduleIndex++)
                 {
-                    if (!(prefab.Modules[moduleIndex] is ModuleEngines enginePrefab))
-                        continue;
-
-                    var propellants = new List<PropellantInfo>();
-                    foreach (Propellant p in enginePrefab.propellants)
+                    PartModule modulePrefab = prefab.Modules[moduleIndex];
+                    if (modulePrefab is ModuleEngines enginePrefab)
                     {
-                        if (p.name == "ElectricCharge")
-                            continue;
-                        propellants.Add(new PropellantInfo
-                        {
-                            Name = p.name,
-                            Ratio = p.ratio
-                        });
+                        candidates.Add(BuildUnloadedCandidate(
+                            moduleIndex,
+                            enginePrefab.atmosphereCurve.Evaluate(0f),
+                            enginePrefab.mixtureDensity,
+                            enginePrefab.propellants,
+                            false));
+                        continue;
                     }
 
-                    candidates.Add(new UnloadedEngineCandidate
+                    if (modulePrefab is ModuleRCS rcsPrefab)
                     {
-                        ModuleIndex = moduleIndex,
-                        Isp = enginePrefab.atmosphereCurve.Evaluate(0f),
-                        MixtureDensity = enginePrefab.mixtureDensity,
-                        Propellants = propellants
-                    });
+                        candidates.Add(BuildUnloadedCandidate(
+                            moduleIndex,
+                            GetRcsVacuumIsp(rcsPrefab),
+                            0.0,
+                            rcsPrefab.propellants,
+                            true));
+                        continue;
+                    }
+
+                    if (modulePrefab is ModuleRCSFX rcsFxPrefab)
+                    {
+                        candidates.Add(BuildUnloadedCandidate(
+                            moduleIndex,
+                            GetRcsFxVacuumIsp(rcsFxPrefab),
+                            rcsFxPrefab.mixtureDensity,
+                            rcsFxPrefab.propellants,
+                            true));
+                    }
                 }
             }
 
             UnloadedEngineCache[partName] = candidates;
             return candidates;
+        }
+
+        private static UnloadedEngineCandidate BuildUnloadedCandidate(
+            int moduleIndex,
+            double isp,
+            double mixtureDensity,
+            List<Propellant> propellants,
+            bool isRcs)
+        {
+            var propellantInfos = new List<PropellantInfo>();
+            if (propellants != null)
+            {
+                foreach (Propellant propellant in propellants)
+                {
+                    if (propellant == null || propellant.name == "ElectricCharge")
+                        continue;
+
+                    propellantInfos.Add(new PropellantInfo
+                    {
+                        Name = propellant.name,
+                        Ratio = propellant.ratio
+                    });
+                }
+            }
+
+            return new UnloadedEngineCandidate
+            {
+                ModuleIndex = moduleIndex,
+                Isp = isp,
+                MixtureDensity = mixtureDensity > 0.0
+                    ? mixtureDensity
+                    : CalculateMixtureDensity(propellants),
+                Propellants = propellantInfos,
+                IsRcs = isRcs
+            };
+        }
+
+        private static double CalculateMixtureDensity(List<Propellant> propellants)
+        {
+            if (propellants == null || propellants.Count == 0)
+                return 0.0;
+
+            double density = 0.0;
+            double ratioTotal = 0.0;
+            foreach (Propellant propellant in propellants)
+            {
+                if (propellant == null || propellant.name == "ElectricCharge")
+                    continue;
+
+                PartResourceDefinition definition = GetResourceDefinition(propellant.name);
+                if (definition == null)
+                    continue;
+
+                density += definition.density * propellant.ratio;
+                ratioTotal += propellant.ratio;
+            }
+
+            return ratioTotal > 0.0 ? density / ratioTotal : 0.0;
         }
     }
 }

@@ -15,6 +15,7 @@ namespace OrbitalKeeper
         // ==============================
         public static string WindowTitle = "Orbital Keeper - Station Keeping";
         public static string FleetWindowTitle = "Vessel Overview";
+        public static string EditorWindowTitle = "Orbital Keeper - VAB Estimate";
 
         // ==============================
         //  General Labels
@@ -25,6 +26,7 @@ namespace OrbitalKeeper
         public static string ScenarioNotLoaded = "ScenarioModule not loaded.";
         public static string TrackedVessels = "Tracked vessels: <<1>>";
         public static string UnknownVessel = "[Unknown] <<1>>";
+        public static string Close = "Close";
 
         // ==============================
         //  Status
@@ -75,6 +77,7 @@ namespace OrbitalKeeper
         public static string EngineModeLabel = "Engine Mode:";
         public static string EngineModeIgnited = "Ignited Only";
         public static string EngineModeActive = "Active Not Shutdown";
+        public static string AllowRcsEnginesToggle = "Enable RCS Thrusters";
         public static string ApplySettings = "Apply Settings";
         public static string FontSizeLabel = "Font Size: <<1>>";
         public static string ConfigAutoKeepSettings = "Auto Station-Keeping Settings";
@@ -100,6 +103,35 @@ namespace OrbitalKeeper
         public static string SectionStats = "--- Statistics ---";
         public static string TotalDvSpent = "Total Δv Spent";
         public static string TotalECSpent = "Total EC Spent";
+        public static string EstimateDvPerCorrection = "Estimated Δv / Correction";
+        public static string EstimateEcPerCorrection = "Estimated EC / Correction";
+        public static string EstimateFuelPerCorrection = "Estimated Fuel / Correction";
+        public static string EstimateRemainingCorrections = "Remaining Corrections";
+        public static string EstimateMaintainTime = "Estimated Maintain Time";
+        public static string EstimateNextCorrection = "Estimated Next Correction";
+        public static string EstimateBasis = "Estimate Basis";
+        public static string EstimateBasisCurrent = "Current correction";
+        public static string EstimateBasisSwaod = "SWAOD decay";
+        public static string EstimateBasisSwaodStorm = "SWAOD storm decay";
+        public static string EstimateBasisInterval = "Check interval fallback";
+        public static string EstimateUnavailableSwaodMissing = "SWAOD not installed";
+        public static string EstimateUnavailableSwaodUnavailable = "SWAOD estimate unavailable";
+        public static string EstimateUnavailableInvalidOrbit = "Invalid orbit";
+        public static string EstimateUnavailableNoEngine = "No usable engine";
+        public static string EstimateUnavailableNoCorrection = "No correction estimate";
+        public static string EstimateTimeYearsDays = "<<1>>y <<2>>d";
+        public static string EstimateTimeDaysHours = "<<1>>d <<2>>h";
+        public static string EstimateTimeGT100Years = ">100y";
+        public static string EstimateIntervalNote = "Correction interval and maintain time use target-orbit decay; per-correction Δv restores one tolerance band.";
+        public static string EstimateEcNote = "Lifetime estimate ignores EC for RCS and when EC/dV is 0; remaining corrections use propellant only.";
+        public static string EditorSectionOrbit = "Planning Orbit";
+        public static string EditorSectionCraft = "Craft Estimate";
+        public static string EditorBody = "Body";
+        public static string EditorUseSuggestedOrbit = "Use Suggested Orbit";
+        public static string EditorCraftMass = "Craft Mass";
+        public static string EditorBestEngine = "Best Engine Isp";
+        public static string EditorEstimateNoCraft = "No craft loaded";
+        public static string EditorEstimateHint = "VAB/SPH estimate uses the selected body, target orbit, current craft resources, and the best installed engine.";
 
         // ==============================
         //  Footer
@@ -169,6 +201,7 @@ namespace OrbitalKeeper
             // Window Titles
             WindowTitle = Get("#LOC_OrbKeep_WindowTitle", WindowTitle);
             FleetWindowTitle = Get("#LOC_OrbKeep_FleetWindowTitle", FleetWindowTitle);
+            EditorWindowTitle = Get("#LOC_OrbKeep_EditorWindowTitle", EditorWindowTitle);
 
             // General
             NoVesselSelected = Get("#LOC_OrbKeep_NoVesselSelected", NoVesselSelected);
@@ -177,6 +210,7 @@ namespace OrbitalKeeper
             ScenarioNotLoaded = Get("#LOC_OrbKeep_ScenarioNotLoaded", ScenarioNotLoaded);
             TrackedVessels = Get("#LOC_OrbKeep_TrackedVessels", TrackedVessels);
             UnknownVessel = Get("#LOC_OrbKeep_UnknownVessel", UnknownVessel);
+            Close = Get("#LOC_OrbKeep_Close", Close);
 
             // Status
             StatusLabel = Get("#LOC_OrbKeep_StatusLabel", StatusLabel);
@@ -218,6 +252,7 @@ namespace OrbitalKeeper
             EngineModeLabel = Get("#LOC_OrbKeep_EngineModeLabel", EngineModeLabel);
             EngineModeIgnited = Get("#LOC_OrbKeep_EngineModeIgnited", EngineModeIgnited);
             EngineModeActive = Get("#LOC_OrbKeep_EngineModeActive", EngineModeActive);
+            AllowRcsEnginesToggle = Get("#LOC_OrbKeep_AllowRcsEnginesToggle", AllowRcsEnginesToggle);
             ApplySettings = Get("#LOC_OrbKeep_ApplySettings", ApplySettings);
             FontSizeLabel = Get("#LOC_OrbKeep_FontSizeLabel", FontSizeLabel);
             ConfigAutoKeepSettings = Get("#LOC_OrbKeep_ConfigAutoKeepSettings", ConfigAutoKeepSettings);
@@ -239,6 +274,35 @@ namespace OrbitalKeeper
             SectionStats = Get("#LOC_OrbKeep_SectionStats", SectionStats);
             TotalDvSpent = Get("#LOC_OrbKeep_TotalDvSpent", TotalDvSpent);
             TotalECSpent = Get("#LOC_OrbKeep_TotalECSpent", TotalECSpent);
+            EstimateDvPerCorrection = Get("#LOC_OrbKeep_EstimateDvPerCorrection", EstimateDvPerCorrection);
+            EstimateEcPerCorrection = Get("#LOC_OrbKeep_EstimateEcPerCorrection", EstimateEcPerCorrection);
+            EstimateFuelPerCorrection = Get("#LOC_OrbKeep_EstimateFuelPerCorrection", EstimateFuelPerCorrection);
+            EstimateRemainingCorrections = Get("#LOC_OrbKeep_EstimateRemainingCorrections", EstimateRemainingCorrections);
+            EstimateMaintainTime = Get("#LOC_OrbKeep_EstimateMaintainTime", EstimateMaintainTime);
+            EstimateNextCorrection = Get("#LOC_OrbKeep_EstimateNextCorrection", EstimateNextCorrection);
+            EstimateBasis = Get("#LOC_OrbKeep_EstimateBasis", EstimateBasis);
+            EstimateBasisCurrent = Get("#LOC_OrbKeep_EstimateBasisCurrent", EstimateBasisCurrent);
+            EstimateBasisSwaod = Get("#LOC_OrbKeep_EstimateBasisSwaod", EstimateBasisSwaod);
+            EstimateBasisSwaodStorm = Get("#LOC_OrbKeep_EstimateBasisSwaodStorm", EstimateBasisSwaodStorm);
+            EstimateBasisInterval = Get("#LOC_OrbKeep_EstimateBasisInterval", EstimateBasisInterval);
+            EstimateUnavailableSwaodMissing = Get("#LOC_OrbKeep_EstimateUnavailableSwaodMissing", EstimateUnavailableSwaodMissing);
+            EstimateUnavailableSwaodUnavailable = Get("#LOC_OrbKeep_EstimateUnavailableSwaodUnavailable", EstimateUnavailableSwaodUnavailable);
+            EstimateUnavailableInvalidOrbit = Get("#LOC_OrbKeep_EstimateUnavailableInvalidOrbit", EstimateUnavailableInvalidOrbit);
+            EstimateUnavailableNoEngine = Get("#LOC_OrbKeep_EstimateUnavailableNoEngine", EstimateUnavailableNoEngine);
+            EstimateUnavailableNoCorrection = Get("#LOC_OrbKeep_EstimateUnavailableNoCorrection", EstimateUnavailableNoCorrection);
+            EstimateTimeYearsDays = Get("#LOC_OrbKeep_EstimateTimeYearsDays", EstimateTimeYearsDays);
+            EstimateTimeDaysHours = Get("#LOC_OrbKeep_EstimateTimeDaysHours", EstimateTimeDaysHours);
+            EstimateTimeGT100Years = Get("#LOC_OrbKeep_EstimateTimeGT100Years", EstimateTimeGT100Years);
+            EstimateIntervalNote = Get("#LOC_OrbKeep_EstimateIntervalNote", EstimateIntervalNote);
+            EstimateEcNote = Get("#LOC_OrbKeep_EstimateEcNote", EstimateEcNote);
+            EditorSectionOrbit = Get("#LOC_OrbKeep_EditorSectionOrbit", EditorSectionOrbit);
+            EditorSectionCraft = Get("#LOC_OrbKeep_EditorSectionCraft", EditorSectionCraft);
+            EditorBody = Get("#LOC_OrbKeep_EditorBody", EditorBody);
+            EditorUseSuggestedOrbit = Get("#LOC_OrbKeep_EditorUseSuggestedOrbit", EditorUseSuggestedOrbit);
+            EditorCraftMass = Get("#LOC_OrbKeep_EditorCraftMass", EditorCraftMass);
+            EditorBestEngine = Get("#LOC_OrbKeep_EditorBestEngine", EditorBestEngine);
+            EditorEstimateNoCraft = Get("#LOC_OrbKeep_EditorEstimateNoCraft", EditorEstimateNoCraft);
+            EditorEstimateHint = Get("#LOC_OrbKeep_EditorEstimateHint", EditorEstimateHint);
 
             // Footer
             FleetOverview = Get("#LOC_OrbKeep_FleetOverview", FleetOverview);

@@ -69,6 +69,9 @@ namespace OrbitalKeeper
         /// <summary>Which engines are eligible for station-keeping burns.</summary>
         public EngineSelectionMode EngineMode { get; set; } = EngineSelectionMode.IgnitedOnly;
 
+        /// <summary>Whether RCS thrusters may be used for station-keeping burns.</summary>
+        public bool AllowRcsEngines { get; set; }
+
         // --- Runtime state (not persisted unless noted) ---
 
         /// <summary>Current station-keeping status.</summary>
@@ -120,6 +123,7 @@ namespace OrbitalKeeper
             node.AddValue("autoEnabled", AutoKeepEnabled);
             node.AddValue("checkInterval", CheckInterval);
             node.AddValue("engineMode", EngineMode.ToString());
+            node.AddValue("allowRcs", AllowRcsEngines);
             node.AddValue("lastCheckTime", LastCheckTime);
             node.AddValue("totalDvSpent", TotalDeltaVSpent);
             node.AddValue("totalECSpent", TotalECSpent);
@@ -150,6 +154,12 @@ namespace OrbitalKeeper
             {
                 if (Enum.TryParse(node.GetValue("engineMode"), out EngineSelectionMode mode))
                     data.EngineMode = mode;
+            }
+
+            if (node.HasValue("allowRcs"))
+            {
+                bool.TryParse(node.GetValue("allowRcs"), out bool allowRcs);
+                data.AllowRcsEngines = allowRcs;
             }
 
             return data;

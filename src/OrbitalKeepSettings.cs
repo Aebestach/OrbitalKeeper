@@ -22,8 +22,9 @@ namespace OrbitalKeeper
 
         // --- Resource consumption rates ---
 
-        /// <summary>EC consumed per 1 m/s of delta-v spent on station-keeping.</summary>
-        public static double ECPerDeltaV { get; private set; } = 10.0;
+        /// <summary>EC consumed per 1 m/s of delta-v spent on station-keeping (per-save difficulty setting).</summary>
+        public static double ECPerDeltaV =>
+            OrbitalKeepParameters.Instance?.ecPerDeltaV ?? _cfgEcPerDeltaV;
 
         // --- Safety limits ---
 
@@ -31,8 +32,12 @@ namespace OrbitalKeeper
         public static double MinSafeAltitudeMargin { get; private set; } = 10000.0;
 
         /// <summary>Maximum delta-v that can be applied in a single correction (m/s).
-        /// Prevents catastrophic orbit changes from misconfiguration.</summary>
-        public static double MaxCorrectionDeltaV { get; private set; } = 500.0;
+        /// Prevents catastrophic orbit changes from misconfiguration (per-save difficulty setting).</summary>
+        public static double MaxCorrectionDeltaV =>
+            OrbitalKeepParameters.Instance?.maxCorrectionDeltaV ?? _cfgMaxCorrectionDeltaV;
+
+        private static double _cfgEcPerDeltaV = 5.0;
+        private static double _cfgMaxCorrectionDeltaV = 100.0;
 
         // --- Notification settings ---
 
@@ -85,9 +90,9 @@ namespace OrbitalKeeper
 
             DefaultTolerance = ParseDouble(settings, "defaultTolerance", DefaultTolerance);
             DefaultCheckInterval = ParseDouble(settings, "defaultCheckInterval", DefaultCheckInterval);
-            ECPerDeltaV = ParseDouble(settings, "ecPerDeltaV", ECPerDeltaV);
+            _cfgEcPerDeltaV = ParseDouble(settings, "ecPerDeltaV", _cfgEcPerDeltaV);
             MinSafeAltitudeMargin = ParseDouble(settings, "minSafeAltitudeMargin", MinSafeAltitudeMargin);
-            MaxCorrectionDeltaV = ParseDouble(settings, "maxCorrectionDeltaV", MaxCorrectionDeltaV);
+            _cfgMaxCorrectionDeltaV = ParseDouble(settings, "maxCorrectionDeltaV", _cfgMaxCorrectionDeltaV);
             MessageDuration = (float)ParseDouble(settings, "messageDuration", MessageDuration);
             if (settings.HasValue("enableToolbarButton"))
             {
@@ -117,7 +122,7 @@ namespace OrbitalKeeper
                 ShowResourceWarnings = showRes;
             }
 
-            Debug.Log($"[OrbitalKeeper] Settings loaded: Tolerance={DefaultTolerance}%, CheckInterval={DefaultCheckInterval}s, EC/dV={ECPerDeltaV}, MaxDV={MaxCorrectionDeltaV}m/s");
+            Debug.Log($"[OrbitalKeeper] Settings loaded: Tolerance={DefaultTolerance}%, CheckInterval={DefaultCheckInterval}s, EC/dV fallback={_cfgEcPerDeltaV}, MaxDV fallback={_cfgMaxCorrectionDeltaV}m/s");
         }
 
         // ======================================================================

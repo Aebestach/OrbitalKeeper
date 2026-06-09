@@ -40,13 +40,14 @@ namespace OrbitalKeeper
         private const int FLEET_WINDOW_ID = 0x4F4B_0002;
         private const int BODY_PICKER_WINDOW_ID = 0x4F4B_0003;
         private const float BASE_FONT_SIZE = 12f;
-        private const float BASE_MAIN_WIDTH = 420f;
+        private const float BASE_MAIN_WIDTH = 470f;
         private const float BASE_FLEET_WIDTH = 350f;
         // Body picker popup dimensions (aligned with SpaceWeatherAndAtmosphericOrbitalDecay)
         private const float BODY_POPUP_MAX_WIDTH = 280f;
         private const float BODY_POPUP_DEFAULT_WIDTH = 180f;
         private const float BODY_POPUP_LIST_HEIGHT = 340f;
         private const float BODY_BUTTON_PADDING = 16f;
+        private const float LIFETIME_ESTIMATE_CACHE_INTERVAL = 1.0f;
 
         // --- AppLauncher ---
         private ApplicationLauncherButton appButton;
@@ -65,6 +66,7 @@ namespace OrbitalKeeper
         private string inputInterval = "3600";
         private string inputTolerance = "5.0";
         private bool inputAutoKeepEnabled;
+        private bool inputAllowRcs;
         private string inputFontSize = "12";
         private string guiHotkeyInput = "O";
         private bool guiHotkeyAlt = true;
@@ -75,6 +77,10 @@ namespace OrbitalKeeper
         private bool guiConfigExpanded = true;
         private bool lastLowPeWarning;
         private bool needsLayoutRecalc;
+        private StationKeepEstimator.EstimateResult cachedLifetimeEstimate;
+        private Guid cachedLifetimeVesselId = Guid.Empty;
+        private int cachedLifetimeSignature;
+        private float lastLifetimeEstimateTime = -1f;
 
         // --- Tracking station selection ---
         private Vessel trackingStationVessel;
@@ -300,6 +306,7 @@ namespace OrbitalKeeper
                 editData = StationKeepScenario.Instance.GetOrCreateVesselData(targetVessel);
                 SyncInputFields();
                 RefreshTargetStatus();
+                InvalidateLifetimeEstimate();
             }
         }
 
@@ -312,6 +319,7 @@ namespace OrbitalKeeper
             inputInterval = editData.CheckInterval.ToString("F0");
             inputTolerance = editData.Tolerance.ToString("F1");
             inputAutoKeepEnabled = editData.AutoKeepEnabled;
+            inputAllowRcs = editData.AllowRcsEngines;
         }
 
         // ======================================================================
@@ -541,6 +549,8 @@ namespace OrbitalKeeper
                     editData.EngineMode = EngineSelectionMode.ActiveNotShutdown;
                 }
                 GUILayout.EndHorizontal();
+                inputAllowRcs = GUILayout.Toggle(inputAllowRcs, Loc.AllowRcsEnginesToggle, _toggleStyle);
+                editData.AllowRcsEngines = inputAllowRcs;
             }
             if (GUILayout.Button(Loc.ApplySettings, _buttonStyle))
             {
@@ -646,6 +656,23 @@ namespace OrbitalKeeper
             GUILayout.BeginVertical(_boxStyle);
             DrawParamRow(Loc.TotalDvSpent, $"{editData.TotalDeltaVSpent:F2} m/s");
             DrawParamRow(Loc.TotalECSpent, $"{editData.TotalECSpent:F1}");
+            DrawSeparator();
+
+            StationKeepEstimator.EstimateResult estimate = GetLifetimeEstimate();
+            if (estimate.Available)
+            {
+                DrawParamRow(Loc.EstimateDvPerCorrection, $"{estimate.DeltaVPerCorrection:F3} m/s");
+                DrawParamRow(Loc.EstimateFuelPerCorrection, $"{estimate.Budget.RequiredFuelMass:F5} t");
+                DrawParamRow(Loc.EstimateRemainingCorrections, FormatCorrectionCount(estimate.AvailableCorrections));
+                DrawParamRow(Loc.EstimateMaintainTime, FormatLongTime(estimate.EstimatedLifetimeSeconds));
+                DrawParamRow(Loc.EstimateNextCorrection, FormatLongTime(estimate.SecondsPerCorrection));
+                DrawEstimateNotes();
+            }
+            else
+            {
+                DrawParamRow(Loc.EstimateMaintainTime, estimate.UnavailableReason);
+            }
+
             GUILayout.EndVertical();
         }
 
@@ -1035,6 +1062,7 @@ namespace OrbitalKeeper
                 }
 
                 editData.AutoKeepEnabled = inputAutoKeepEnabled;
+                editData.AllowRcsEngines = inputAllowRcs;
             }
 
             // Save to scenario
@@ -1077,8 +1105,14 @@ namespace OrbitalKeeper
             }
 
             ResourceManager.EngineInfo engineInfo = targetVessel.loaded
-                ? ResourceManager.FindBestEngine(targetVessel, editData.EngineMode)
-                : ResourceManager.FindBestEngineUnloaded(targetVessel.protoVessel, editData.EngineMode);
+                ? ResourceManager.FindBestEngine(
+                    targetVessel,
+                    editData.EngineMode,
+                    editData.AllowRcsEngines)
+                : ResourceManager.FindBestEngineUnloaded(
+                    targetVessel.protoVessel,
+                    editData.EngineMode,
+                    editData.AllowRcsEngines);
 
             if (!engineInfo.Found)
             {
@@ -1162,6 +1196,60 @@ namespace OrbitalKeeper
             SyncInputFields();
 
             StationKeepScenario.Instance?.SetVesselData(editData);
+            InvalidateLifetimeEstimate();
+        }
+
+        private void InvalidateLifetimeEstimate()
+        {
+            cachedLifetimeVesselId = Guid.Empty;
+            cachedLifetimeSignature = 0;
+            lastLifetimeEstimateTime = -1f;
+        }
+
+        private StationKeepEstimator.EstimateResult GetLifetimeEstimate()
+        {
+            if (targetVessel == null || editData == null)
+            {
+                return new StationKeepEstimator.EstimateResult
+                {
+                    Available = false,
+                    UnavailableReason = Loc.Unit_NA
+                };
+            }
+
+            float now = Time.realtimeSinceStartup;
+            int signature = BuildLifetimeEstimateSignature();
+            if (cachedLifetimeVesselId == targetVessel.id &&
+                cachedLifetimeSignature == signature &&
+                now - lastLifetimeEstimateTime < LIFETIME_ESTIMATE_CACHE_INTERVAL)
+            {
+                return cachedLifetimeEstimate;
+            }
+
+            cachedLifetimeEstimate = StationKeepEstimator.Estimate(targetVessel, editData);
+            cachedLifetimeVesselId = targetVessel.id;
+            cachedLifetimeSignature = signature;
+            lastLifetimeEstimateTime = now;
+            return cachedLifetimeEstimate;
+        }
+
+        private int BuildLifetimeEstimateSignature()
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 31 + (targetVessel != null ? targetVessel.id.GetHashCode() : 0);
+                hash = hash * 31 + (targetVessel != null && targetVessel.loaded ? 1 : 0);
+                hash = hash * 31 + ResourceManager.GetVesselMass(targetVessel).GetHashCode();
+                hash = hash * 31 + editData.TargetApoapsis.GetHashCode();
+                hash = hash * 31 + editData.TargetPeriapsis.GetHashCode();
+                hash = hash * 31 + editData.TargetInclination.GetHashCode();
+                hash = hash * 31 + editData.Tolerance.GetHashCode();
+                hash = hash * 31 + editData.CheckInterval.GetHashCode();
+                hash = hash * 31 + editData.EngineMode.GetHashCode();
+                hash = hash * 31 + (editData.AllowRcsEngines ? 1 : 0);
+                return hash;
+            }
         }
 
         // ======================================================================
@@ -1174,6 +1262,20 @@ namespace OrbitalKeeper
             GUILayout.Label(label, _labelStyle, GUILayout.Width(GetLabelWidth()));
             GUILayout.Label(value, _labelStyle);
             GUILayout.EndHorizontal();
+        }
+
+        private static void DrawSeparator()
+        {
+            GUILayout.Space(4);
+            GUILayout.Box(GUIContent.none, GUILayout.ExpandWidth(true), GUILayout.Height(1));
+            GUILayout.Space(4);
+        }
+
+        private static void DrawEstimateNotes()
+        {
+            GUILayout.Space(4);
+            GUILayout.Label(Loc.EstimateIntervalNote, _richStyle);
+            GUILayout.Label(Loc.EstimateEcNote, _richStyle);
         }
 
         private static string DrawInputRow(string label, string currentValue)
@@ -1247,7 +1349,7 @@ namespace OrbitalKeeper
 
         private static float GetLabelWidth()
         {
-            return Mathf.Round(140f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return Mathf.Round(175f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
         }
 
         private static float GetInputWidth()
@@ -1324,6 +1426,49 @@ namespace OrbitalKeeper
             return Loc.Format(Loc.TimeFormat_s, secs.ToString());
         }
 
+        private static string FormatCorrectionCount(double count)
+        {
+            if (double.IsNaN(count) || count <= 0.0)
+                return "0";
+            if (double.IsPositiveInfinity(count) || count > 9999.0)
+                return ">9999";
+            if (count >= 100.0)
+                return count.ToString("F0");
+            if (count >= 10.0)
+                return count.ToString("F1");
+            return count.ToString("F2");
+        }
+
+        private static string FormatLongTime(double seconds)
+        {
+            if (double.IsNaN(seconds) || seconds < 0.0)
+                return Loc.Unit_NA;
+            if (double.IsPositiveInfinity(seconds))
+                return Loc.EstimateTimeGT100Years;
+
+            double dayLength = GameSettings.KERBIN_TIME ? 21600.0 : 86400.0;
+            double yearLength = dayLength * (GameSettings.KERBIN_TIME ? 426.0 : 365.0);
+
+            if (seconds > yearLength * 100.0)
+                return Loc.EstimateTimeGT100Years;
+
+            if (seconds >= yearLength)
+            {
+                int years = (int)(seconds / yearLength);
+                int days = (int)((seconds % yearLength) / dayLength);
+                return Loc.Format(Loc.EstimateTimeYearsDays, years.ToString(), days.ToString());
+            }
+
+            if (seconds >= dayLength)
+            {
+                int days = (int)(seconds / dayLength);
+                int hours = (int)((seconds % dayLength) / 3600.0);
+                return Loc.Format(Loc.EstimateTimeDaysHours, days.ToString(), hours.ToString());
+            }
+
+            return FormatTime(seconds);
+        }
+
         private static string FormatHotkeyDisplay(string keyInput, bool alt, bool ctrl, bool shift)
         {
             string key = string.IsNullOrEmpty(keyInput) ? Loc.Unit_NA : keyInput.ToUpperInvariant();
@@ -1352,7 +1497,7 @@ namespace OrbitalKeeper
 
             _labelStyle = new GUIStyle(GUI.skin.label) { fontSize = size };
             _boldStyle = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = FontStyle.Bold };
-            _richStyle = new GUIStyle(GUI.skin.label) { fontSize = size, richText = true };
+            _richStyle = new GUIStyle(GUI.skin.label) { fontSize = size, richText = true, wordWrap = true };
             _buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = size };
             _toggleStyle = new GUIStyle(GUI.skin.toggle) { fontSize = size };
             _textFieldStyle = new GUIStyle(GUI.skin.textField) { fontSize = size };
