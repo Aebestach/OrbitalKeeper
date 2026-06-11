@@ -1,5 +1,4 @@
 using System;
-using System.Collections;
 using UnityEngine;
 
 namespace OrbitalKeeper
@@ -9,11 +8,10 @@ namespace OrbitalKeeper
     /// 1. The public API for manual correction (called from UI).
     /// 2. Status refresh for UI display.
     /// 3. Static helper methods used by StationKeepScenario for automatic
-    ///    background correction of unloaded vessels.
+    ///    correction of loaded and unloaded vessels.
     ///
-    /// Automatic station-keeping only runs on UNLOADED (on-rails) vessels,
-    /// driven by StationKeepScenario.FixedUpdate. This module does NOT
-    /// run its own FixedUpdate loop for auto-correction.
+    /// Automatic station-keeping is driven by StationKeepScenario.FixedUpdate.
+    /// This module does NOT run its own FixedUpdate loop for auto-correction.
     /// </summary>
     public class VesselKeepModule : VesselModule
     {
@@ -30,15 +28,21 @@ namespace OrbitalKeeper
         public ResourceManager.ResourceCheckResult LastResourceCheck { get; private set; }
 
         // ======================================================================
-        //  STATIC CORRECTION LOGIC (used by Scenario for unloaded vessels)
+        //  STATIC CORRECTION LOGIC (used by Scenario)
         // ======================================================================
 
         /// <summary>
-        /// Entry point called by StationKeepScenario for unloaded vessels.
+        /// Entry point called by StationKeepScenario for automatic correction.
         /// Evaluates orbit drift, checks resources, and applies correction.
         /// </summary>
         public static void PerformOrbitCheckForVessel(Vessel vessel, VesselKeepData data)
         {
+            if (!IsValidOrbitForKeeping(vessel))
+            {
+                data.Status = KeepStatus.InvalidOrbit;
+                return;
+            }
+
             // 1. Calculate required correction
             var correction = DeltaVCalculator.CalculateCorrection(vessel, data);
 
@@ -53,12 +57,8 @@ namespace OrbitalKeeper
             // Safety: cap correction delta-v
             double deltaV = Math.Min(correction.TotalDeltaV, OrbitalKeepSettings.MaxCorrectionDeltaV);
 
-            // 2. Find eligible engine (unloaded path)
-            ResourceManager.EngineInfo engineInfo =
-                ResourceManager.FindBestEngineUnloaded(
-                    vessel.protoVessel,
-                    data.EngineMode,
-                    data.AllowRcsEngines);
+            // 2. Find eligible engine
+            ResourceManager.EngineInfo engineInfo = FindBestEngineForVessel(vessel, data);
 
             if (!engineInfo.Found)
             {
@@ -80,8 +80,14 @@ namespace OrbitalKeeper
                 return;
             }
 
-            // 4. Consume resources and apply orbital change
+            // 4. Apply orbital change and then charge resources for the burn.
             data.Status = KeepStatus.Correcting;
+
+            if (!ApplyCorrectionToVessel(vessel, data, correction))
+            {
+                data.Status = KeepStatus.Drifting;
+                return;
+            }
 
             bool consumed = ResourceManager.ConsumeResources(
                 vessel, deltaV, engineInfo,
@@ -92,9 +98,6 @@ namespace OrbitalKeeper
                 data.Status = KeepStatus.InsufficientResources;
                 return;
             }
-
-            // Apply orbit change (vessel is unloaded / on-rails, direct element modification works)
-            ApplyOrbitalChangeOnRails(vessel, data);
 
             // Update statistics
             data.TotalDeltaVSpent += deltaV;
@@ -110,6 +113,7 @@ namespace OrbitalKeeper
 
             Debug.Log($"[OrbitalKeeper] {vessel.vesselName}: Background correction applied. " +
                       $"dV={deltaV:F2}m/s, EC={ecConsumed:F1}, fuel={fuelMassConsumed:F4}t. " +
+                      $"loaded={vessel.loaded}, packed={vessel.packed}, " +
                       $"Total dV spent: {data.TotalDeltaVSpent:F2}m/s");
         }
 
@@ -134,18 +138,94 @@ namespace OrbitalKeeper
             // Preserve orientation elements
             double lan = orbit.LAN;
             double argPe = orbit.argumentOfPeriapsis;
-            double meanAnomalyAtEpoch = orbit.meanAnomalyAtEpoch;
-            double epoch = orbit.epoch;
+            double meanAnomaly = orbit.meanAnomaly;
 
             orbit.semiMajorAxis = targetSMA;
             orbit.eccentricity = targetEcc;
             orbit.inclination = data.TargetInclination;
             orbit.LAN = lan;
             orbit.argumentOfPeriapsis = argPe;
-            orbit.meanAnomalyAtEpoch = meanAnomalyAtEpoch;
-            orbit.epoch = epoch;
+            orbit.meanAnomalyAtEpoch = meanAnomaly;
+            orbit.epoch = ut;
             orbit.Init();
             orbit.UpdateFromUT(ut);
+        }
+
+        private static ResourceManager.EngineInfo FindBestEngineForVessel(
+            Vessel vessel,
+            VesselKeepData data)
+        {
+            if (vessel.loaded)
+                return ResourceManager.FindBestEngine(
+                    vessel,
+                    data.EngineMode,
+                    data.AllowRcsEngines);
+
+            return ResourceManager.FindBestEngineUnloaded(
+                vessel.protoVessel,
+                data.EngineMode,
+                data.AllowRcsEngines);
+        }
+
+        private static bool ApplyCorrectionToVessel(
+            Vessel vessel,
+            VesselKeepData data,
+            DeltaVCalculator.CorrectionResult correction)
+        {
+            if (vessel == null || vessel.orbit == null)
+                return false;
+
+            if (vessel.loaded && !vessel.packed)
+                return ApplyLoadedVelocityCorrection(vessel, data, correction);
+
+            ApplyOrbitalChangeOnRails(vessel, data);
+            if (vessel.orbitDriver != null)
+                vessel.orbitDriver.UpdateOrbit();
+            return true;
+        }
+
+        private static bool ApplyLoadedVelocityCorrection(
+            Vessel vessel,
+            VesselKeepData data,
+            DeltaVCalculator.CorrectionResult correction)
+        {
+            if (correction.InPlaneDeltaV <= 0.01)
+            {
+                // Inclination-only automatic corrections require direct orbit editing.
+                // Avoid that while the vessel is under full physics simulation.
+                return false;
+            }
+
+            Orbit orbit = vessel.orbit;
+            CelestialBody body = orbit.referenceBody;
+            if (body == null)
+                return false;
+
+            double targetApR = data.TargetApoapsis + body.Radius;
+            double targetPeR = data.TargetPeriapsis + body.Radius;
+            double targetSma = (targetApR + targetPeR) / 2.0;
+            double currentRadius = body.Radius + Math.Max(0.0, vessel.altitude);
+            if (targetSma <= 0.0 || currentRadius <= body.Radius)
+                return false;
+
+            double targetSpeedSq = body.gravParameter * (2.0 / currentRadius - 1.0 / targetSma);
+            if (targetSpeedSq <= 0.0)
+                return false;
+
+            Vector3d currentVelocity = vessel.obt_velocity;
+            double currentSpeed = currentVelocity.magnitude;
+            if (currentSpeed <= 1e-6)
+                return false;
+
+            double deltaSpeed = Math.Sqrt(targetSpeedSq) - currentSpeed;
+            if (Math.Abs(deltaSpeed) <= 1e-6)
+                return false;
+
+            vessel.ChangeWorldVelocity(currentVelocity.normalized * deltaSpeed);
+            if (vessel.orbitDriver != null)
+                vessel.orbitDriver.UpdateOrbit();
+
+            return true;
         }
 
         // ======================================================================
@@ -154,8 +234,8 @@ namespace OrbitalKeeper
 
         /// <summary>
         /// Manually triggers a station-keeping correction for this vessel.
-        /// Called from the UI. For loaded vessels, temporarily switches to rails,
-        /// applies the target orbit, then restores physics on the next fixed step.
+        /// Called from the UI. Loaded vessels use the same safe correction executor
+        /// as automatic station-keeping.
         /// </summary>
         /// <returns>True if correction was successfully applied.</returns>
         public bool ManualCorrection()
@@ -184,17 +264,7 @@ namespace OrbitalKeeper
             double deltaV = Math.Min(correction.TotalDeltaV, OrbitalKeepSettings.MaxCorrectionDeltaV);
 
             // Find engine
-            ResourceManager.EngineInfo engineInfo;
-            if (vessel.loaded)
-                engineInfo = ResourceManager.FindBestEngine(
-                    vessel,
-                    keepData.EngineMode,
-                    keepData.AllowRcsEngines);
-            else
-                engineInfo = ResourceManager.FindBestEngineUnloaded(
-                    vessel.protoVessel,
-                    keepData.EngineMode,
-                    keepData.AllowRcsEngines);
+            ResourceManager.EngineInfo engineInfo = FindBestEngineForVessel(vessel, keepData);
 
             LastEngineInfo = engineInfo;
 
@@ -215,6 +285,12 @@ namespace OrbitalKeeper
                 return false;
             }
 
+            if (!ApplyCorrectionToVessel(vessel, keepData, correction))
+            {
+                Debug.LogWarning($"[OrbitalKeeper] {vessel.vesselName}: correction could not be applied in the current vessel state.");
+                return false;
+            }
+
             // Consume resources
             bool consumed = ResourceManager.ConsumeResources(
                 vessel, deltaV, engineInfo,
@@ -222,31 +298,6 @@ namespace OrbitalKeeper
 
             if (!consumed)
                 return false;
-
-            // Apply orbit change.
-            // For loaded vessels, avoid immediate GoOffRails in the same frame,
-            // which can re-synchronize to stale physics state and corrupt orbit.
-            if (vessel.loaded)
-            {
-                try
-                {
-                    vessel.GoOnRails();
-                    ApplyOrbitalChangeOnRails(vessel, keepData);
-                    vessel.orbitDriver.UpdateOrbit();
-                    StartCoroutine(RestorePhysicsNextFixedStep(vessel));
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[OrbitalKeeper] Error applying manual correction " +
-                                   $"to {vessel.vesselName}: {ex.Message}");
-                    try { vessel.GoOffRails(); } catch { /* best effort */ }
-                    return false;
-                }
-            }
-            else
-            {
-                ApplyOrbitalChangeOnRails(vessel, keepData);
-            }
 
             // Update statistics
             keepData.TotalDeltaVSpent += deltaV;
@@ -261,26 +312,6 @@ namespace OrbitalKeeper
             }
 
             return true;
-        }
-
-        private IEnumerator RestorePhysicsNextFixedStep(Vessel targetVessel)
-        {
-            // Wait one physics tick so the new rails orbit becomes the authority
-            // before switching back to loaded simulation.
-            yield return new WaitForFixedUpdate();
-
-            if (targetVessel == null || !targetVessel.loaded)
-                yield break;
-
-            try
-            {
-                targetVessel.orbitDriver.UpdateOrbit();
-                targetVessel.GoOffRails();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[OrbitalKeeper] Error restoring physics for {targetVessel.vesselName}: {ex.Message}");
-            }
         }
 
         /// <summary>

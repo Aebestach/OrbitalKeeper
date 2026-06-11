@@ -7,12 +7,10 @@ namespace OrbitalKeeper
     /// <summary>
     /// ScenarioModule that persists all vessel orbital station-keeping data
     /// across save/load cycles. Also drives the automatic station-keeping loop
-    /// for UNLOADED (on-rails) vessels via FixedUpdate.
+    /// for both loaded and unloaded vessels.
     ///
-    /// Loaded vessels are NOT automatically corrected — station-keeping only
-    /// applies while the vessel is in the background (unloaded / on-rails),
-    /// which is the natural state affected by orbital decay.
-    /// Manual corrections for loaded vessels are available through the UI.
+    /// The scheduler is driven by game time rather than real time so high warp
+    /// cannot skip past station-keeping windows before the next real-time tick.
     /// </summary>
     [KSPScenario(
         ScenarioCreationOptions.AddToAllGames | ScenarioCreationOptions.AddToExistingGames,
@@ -28,11 +26,12 @@ namespace OrbitalKeeper
         private readonly List<Guid> vesselIdBuffer = new List<Guid>(128);
         private bool vesselIdBufferDirty = true;
         private int nextVesselIndex;
-        private float nextSchedulerRealtime;
 
-        private const float SchedulerIntervalSeconds = 0.5f;
         private const int MaxVesselsScannedPerTick = 48;
         private const int MaxChecksPerTick = 8;
+        private const int MaxEmergencyChecksPerTick = 4;
+        private const double MinCheckIntervalSeconds = 60.0;
+        private const double EmergencyLeadTimeCapSeconds = 3600.0;
 
         public override void OnAwake()
         {
@@ -61,17 +60,14 @@ namespace OrbitalKeeper
         }
 
         // ======================================================================
-        //  AUTOMATIC STATION-KEEPING LOOP (unloaded vessels only)
+        //  AUTOMATIC STATION-KEEPING LOOP
         // ======================================================================
 
         /// <summary>
-        /// Drives the automatic station-keeping loop for UNLOADED vessels.
+        /// Drives the automatic station-keeping loop for tracked vessels.
         /// ScenarioModule.FixedUpdate runs every physics frame regardless of which
-        /// vessels are loaded, so it can service background (on-rails) vessels that
-        /// VesselModule.FixedUpdate cannot reach.
-        ///
-        /// Loaded vessels are skipped — orbital decay primarily affects
-        /// unloaded vessels, and loaded vessels are under the player's direct control.
+        /// vessels are loaded, so it can service background vessels and the active
+        /// vessel while time warp advances game time quickly.
         /// </summary>
         private void FixedUpdate()
         {
@@ -79,11 +75,6 @@ namespace OrbitalKeeper
             if (!HighLogic.LoadedSceneIsFlight && HighLogic.LoadedScene != GameScenes.TRACKSTATION)
                 return;
 
-            float nowRealtime = Time.realtimeSinceStartup;
-            if (nowRealtime < nextSchedulerRealtime)
-                return;
-
-            nextSchedulerRealtime = nowRealtime + SchedulerIntervalSeconds;
             RunScheduledChecks();
         }
 
@@ -98,10 +89,11 @@ namespace OrbitalKeeper
             if (vesselIdBuffer.Count == 0)
                 return;
 
-            int scanned = 0;
-            int checks = 0;
             int totalTracked = vesselIdBuffer.Count;
             double currentTime = Planetarium.GetUniversalTime();
+
+            int checks = RunEmergencyChecks(currentTime, totalTracked);
+            int scanned = 0;
 
             while (scanned < MaxVesselsScannedPerTick && checks < MaxChecksPerTick && totalTracked > 0)
             {
@@ -115,46 +107,125 @@ namespace OrbitalKeeper
                 if (!vesselData.TryGetValue(vesselId, out VesselKeepData data))
                     continue;
 
-                // Skip vessels without auto-keep enabled
                 if (!data.AutoKeepEnabled)
                 {
                     data.Status = KeepStatus.Disabled;
                     continue;
                 }
 
-                // Check interval
-                if (currentTime - data.LastCheckTime < data.CheckInterval)
+                if (!IsCheckDue(data, currentTime))
                     continue;
 
-                data.LastCheckTime = currentTime;
-                checks++;
-
-                // Find the vessel
                 Vessel vessel = FlightGlobals.FindVessel(vesselId);
                 if (vessel == null)
                     continue;
 
-                // SKIP loaded vessels — only service unloaded (on-rails) vessels
-                if (vessel.loaded)
-                    continue;
-
-                // Safety check: must be in valid orbit
-                if (!VesselKeepModule.IsValidOrbitForKeeping(vessel))
-                {
-                    data.Status = KeepStatus.InvalidOrbit;
-                    continue;
-                }
-
-                // Perform the full check-and-correct cycle
-                try
-                {
-                    VesselKeepModule.PerformOrbitCheckForVessel(vessel, data);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[OrbitalKeeper] Error checking vessel {vessel.vesselName}: {ex.Message}");
-                }
+                if (TryRunCheck(vessel, data, currentTime))
+                    checks++;
             }
+        }
+
+        private int RunEmergencyChecks(double currentTime, int totalTracked)
+        {
+            int checks = 0;
+
+            for (int i = 0; i < totalTracked && checks < MaxEmergencyChecksPerTick; i++)
+            {
+                Guid vesselId = vesselIdBuffer[i];
+                if (!vesselData.TryGetValue(vesselId, out VesselKeepData data))
+                    continue;
+
+                if (!data.AutoKeepEnabled)
+                {
+                    data.Status = KeepStatus.Disabled;
+                    continue;
+                }
+
+                Vessel vessel = FlightGlobals.FindVessel(vesselId);
+                if (!IsEmergencyCheckNeeded(vessel, data, currentTime))
+                    continue;
+
+                if (TryRunCheck(vessel, data, currentTime))
+                    checks++;
+            }
+
+            return checks;
+        }
+
+        private static bool IsCheckDue(VesselKeepData data, double currentTime)
+        {
+            double interval = Math.Max(MinCheckIntervalSeconds, data.CheckInterval);
+            if (currentTime < data.LastCheckTime)
+                return true;
+            return currentTime - data.LastCheckTime >= interval;
+        }
+
+        private static bool TryRunCheck(Vessel vessel, VesselKeepData data, double currentTime)
+        {
+            if (vessel == null)
+                return false;
+
+            if (!VesselKeepModule.IsValidOrbitForKeeping(vessel))
+            {
+                data.Status = KeepStatus.InvalidOrbit;
+                data.LastCheckTime = currentTime;
+                return true;
+            }
+
+            try
+            {
+                VesselKeepModule.PerformOrbitCheckForVessel(vessel, data);
+                data.LastCheckTime = currentTime;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[OrbitalKeeper] Error checking vessel {vessel.vesselName}: {ex.Message}");
+                return false;
+            }
+        }
+
+        private static bool IsEmergencyCheckNeeded(Vessel vessel, VesselKeepData data, double currentTime)
+        {
+            if (vessel == null || vessel.orbit == null || data == null)
+                return false;
+            if (!VesselKeepModule.IsValidOrbitForKeeping(vessel))
+                return false;
+
+            CelestialBody body = vessel.orbit.referenceBody;
+            if (body == null || !body.atmosphere)
+                return false;
+
+            double emergencyAltitude = body.atmosphereDepth + OrbitalKeepSettings.MinSafeAltitudeMargin;
+            if (vessel.orbit.PeA <= emergencyAltitude)
+                return DeltaVCalculator.CalculateCorrection(vessel, data).NeedsCorrection;
+
+            if (!StationKeepEstimator.TryEstimateCurrentDecayRate(
+                vessel,
+                out double decayRate,
+                out _))
+            {
+                return false;
+            }
+
+            if (decayRate <= 1e-12)
+                return false;
+
+            double secondsToEmergency = (vessel.orbit.PeA - emergencyAltitude) / decayRate;
+            double leadTime = Math.Max(
+                MinCheckIntervalSeconds,
+                Math.Min(Math.Max(MinCheckIntervalSeconds, data.CheckInterval), EmergencyLeadTimeCapSeconds));
+
+            if (currentTime < data.LastCheckTime)
+                return secondsToEmergency <= leadTime;
+
+            double secondsUntilScheduledCheck = Math.Max(
+                0.0,
+                Math.Max(MinCheckIntervalSeconds, data.CheckInterval) - (currentTime - data.LastCheckTime));
+            double waitWindow = Math.Max(leadTime, secondsUntilScheduledCheck);
+
+            return secondsToEmergency <= waitWindow &&
+                   DeltaVCalculator.CalculateCorrection(vessel, data).NeedsCorrection;
         }
 
         private void RebuildVesselIdBuffer()

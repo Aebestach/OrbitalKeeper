@@ -17,7 +17,7 @@
 
 **Orbital Keeper** is a **Kerbal Space Program (KSP)** mod that keeps orbits stable by automatically performing orbit corrections to counter decay-driven orbital lowering.
 
-Automatic station-keeping runs for **unloaded** vessels in the background. Loaded vessels can be corrected manually from the UI.
+Automatic station-keeping runs for both **loaded and unloaded** vessels. Loaded vessels can also be corrected immediately from the UI.
 
 <div align="center">
     <img src="https://imgur.com/2gvRCTA.jpg" alt="UI Screenshot"/>
@@ -25,10 +25,13 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 
 ## Features
 
-*   **Background station-keeping**
-    *   Checks orbit drift at a configurable interval and applies corrections for unloaded vessels.
-*   **Manual correction for loaded vessels**
-    *   Trigger a correction with the UI’s Manual Correct action for direct control in-flight.
+*   **Automatic station-keeping (loaded / unloaded)**
+    *   Checks orbit drift at a configurable game-time interval and applies corrections for tracked vessels.
+    *   The scheduler is driven by **game time**, so checks continue at the configured interval during high warp.
+    *   **Emergency checks** run when periapsis decay is approaching a dangerous altitude.
+*   **Safe correction for loaded vessels**
+    *   Loaded vessels receive prograde/retrograde velocity impulses along the current velocity vector, avoiding unstable direct orbital-element rewrites.
+    *   **Manual Correct** in the UI applies an immediate correction on demand.
 *   **Per-vessel configuration**
     *   Set target Ap/Pe/Inclination.
     *   Adjust tolerance, check interval, and engine selection mode.
@@ -38,7 +41,8 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
     *   Unloaded vessels do not model resource connectivity; blockages are ignored.
 *   **Station-keeping lifetime estimate**
     *   Shows estimated delta-v, propellant use, remaining correction count, maintain time, and nominal correction interval in Flight/Tracking Station.
-    *   Uses SWAOD's public decay-estimation API; if SWAOD is not installed, this estimate is shown as unavailable.
+    *   Uses SWAOD public APIs (`TryEstimateStationKeepingCadence` / `TryEstimateCurrentDecayRates`); if SWAOD is not installed, this estimate is shown as unavailable.
+    *   Emergency checks prefer SWAOD's periapsis decay rate (`PeriapsisDaDt`); storm enhancement is included only when Kerbalism reports an active solar storm.
     *   Per-correction delta-v is fixed from the target orbit tolerance band; correction interval and maintain time use target-orbit decay (not the current drifted orbit).
     *   Remaining correction count is based on propellant only (EC is not a lifetime limiter).
 *   **VAB/SPH planning estimate**
@@ -55,7 +59,7 @@ Automatic station-keeping runs for **unloaded** vessels in the background. Loade
 ## Compatibility
 
 *   ❌ **Principia** : Not supported.
-*   ✅ **Space Weather & Atmospheric Orbital Decay** : Recommended [SWAOD](https://forum.kerbalspaceprogram.com/topic/229637-112x-space-weather-atmospheric-orbital-decay-swaod/)
+*   ✅ **Space Weather & Atmospheric Orbital Decay** : Recommended with [SWAOD](https://forum.kerbalspaceprogram.com/topic/229637-112x-space-weather-atmospheric-orbital-decay-swaod/) for decay and lifetime estimates.
 
 ## Dependencies
 
@@ -147,4 +151,5 @@ Other defaults are stored in:
 
 ### Performance Note
 
+*   The automatic scheduler advances with game time, so checks continue even at high warp (e.g. 10000x) in the Tracking Station. Emergency checks intervene early when periapsis is dropping quickly.
 *   When `enableToolbarButton` is enabled, stutters may occur once per second for up to 10 seconds when using JanitorsCloset. Behavior varies by device; if you need JanitorsCloset, you can disable this option.
