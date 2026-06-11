@@ -18,7 +18,7 @@
 
 **轨道守护者** 是一款用于 **Kerbal Space Program (KSP)** 的轨道维持模组，通过自动执行轨道修正，抵消由轨道衰减带来的影响。
 
-自动轨道维持仅对**未加载**的载具生效；正在使用的载具可通过 UI 进行手动修正。
+自动轨道维持对**已加载与未加载**载具均生效；正在飞行的载具也可通过 UI 手动触发即时修正。
 
 <div align="center">
     <img src="https://imgur.com/2gvRCTA.jpg" alt="UI Screenshot"/>
@@ -26,10 +26,13 @@
 
 ## 功能特性
 
-*   **后台轨道维持**
-    *   按可配置的时间间隔检查轨道，并对未加载载具执行修正。
-*   **已加载载具手动修正**
-    *   在飞行中通过 UI 中的手动修正进行修正，保持可控性。
+*   **自动轨道维持（已加载 / 未加载）**
+    *   按可配置的游戏时间间隔检查轨道，并对已跟踪载具自动执行修正。
+    *   调度器基于**游戏时间**驱动，高倍速下持续按间隔检查。
+    *   当近地点衰减接近危险高度时，会触发**紧急检查**优先处理。
+*   **已加载载具安全修正**
+    *   对已加载载具采用沿当前速度方向的速度脉冲修正，避免直接改写轨道根数导致的不稳定。
+    *   可通过 UI 的 **Manual Correct** 立即手动修正。
 *   **单载具配置**
     *   设置目标远地点/近地点/倾角。
     *   调整容差、检查间隔、引擎选择模式。
@@ -39,7 +42,8 @@
     *   未加载载具的资源统计不区分连通性，不受“允许相互供应”影响。
 *   **轨道维持寿命估算**
     *   在飞行/追踪站中显示预计单次 Δv、推进剂、剩余修正次数、预计维持时间与名义修正周期。
-    *   通过 SWAOD 的公共衰减估算 API 获取结果；未安装 SWAOD 时该估算显示为不可用。
+    *   通过 SWAOD 公共 API（`TryEstimateStationKeepingCadence` / `TryEstimateCurrentDecayRates`）获取衰减率；未安装 SWAOD 时该估算显示为不可用。
+    *   紧急检查优先使用 SWAOD 的近地点衰减速率（`PeriapsisDaDt`）；风暴增强估算仅在 Kerbalism 报告太阳风暴时参与。
     *   预计单次 Δv 按目标轨道容差带宽固定；修正周期与维持时间按目标轨道衰减估算（不随容差内漂移变化）。
     *   剩余修正次数仅按推进剂计算（寿命估算不把 EC 当作上限）。
 *   **VAB/SPH 规划估算**
@@ -56,7 +60,7 @@
 ## 兼容性
 
 *   ❌ **Principia** : 不支持.
-*   ✅ **Space Weather & Atmospheric Orbital Decay** : 推荐[SWAOD](https://forum.kerbalspaceprogram.com/topic/229637-112x-space-weather-atmospheric-orbital-decay-swaod/)
+*   ✅ **Space Weather & Atmospheric Orbital Decay** : 推荐搭配 [SWAOD](https://forum.kerbalspaceprogram.com/topic/229637-112x-space-weather-atmospheric-orbital-decay-swaod/) 以获得衰减与寿命估算。
 
 ## 依赖
 
@@ -148,5 +152,6 @@
 
 ### 性能提示
 
-*   启用 `enableToolbarButton` 后，在使用JanitorsCloset的情况下会出现 10 秒以内、每秒 1 次的卡顿。（具体卡顿情况以设备为主，若需使用JanitorsCloset，可以选择关闭）
+*   自动维持调度按游戏时间推进，追踪站中高倍速（如 10000x）下也能持续检查；紧急检查会在近地点快速下降时提前介入。
+*   启用 `enableToolbarButton` 后，在使用 JanitorsCloset 的情况下可能出现 10 秒以内、每秒 1 次的卡顿。（具体卡顿情况以设备为主，若需使用 JanitorsCloset，可以选择关闭）
 

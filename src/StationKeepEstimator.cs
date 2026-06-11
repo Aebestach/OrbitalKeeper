@@ -52,11 +52,17 @@ namespace OrbitalKeeper
         private static bool swaodApiResolved;
         private static MethodInfo tryEstimateStationKeepingCadence;
         private static MethodInfo tryEstimateStationKeepingCadenceForOrbit;
+        private static MethodInfo tryEstimateCurrentDecayRates;
         private static FieldInfo apiAvailableField;
         private static FieldInfo apiIsStormEstimateField;
         private static FieldInfo apiSecondsToToleranceField;
         private static FieldInfo apiDecayRateField;
         private static FieldInfo apiDeltaVToRestoreToleranceDropField;
+        private static FieldInfo apiCurrentRatesAvailableField;
+        private static FieldInfo apiCurrentRatesIsStormEstimateField;
+        private static FieldInfo apiCurrentRatesDecayRateField;
+        private static FieldInfo apiCurrentRatesDaDtField;
+        private static FieldInfo apiCurrentRatesPeriapsisDaDtField;
 
         public static EstimateResult Estimate(Vessel vessel, VesselKeepData data)
         {
@@ -142,6 +148,51 @@ namespace OrbitalKeeper
             result.EstimatedLifetimeSeconds = budget.AvailableCorrections * secondsPerCorrection;
 
             return result;
+        }
+
+        public static bool TryEstimateCurrentDecayRate(
+            Vessel vessel,
+            out double decayRate,
+            out bool stormEstimate)
+        {
+            decayRate = 0.0;
+            stormEstimate = false;
+
+            if (vessel == null || !ResolveSwaodApi() || tryEstimateCurrentDecayRates == null)
+                return false;
+
+            try
+            {
+                object[] args =
+                {
+                    vessel,
+                    null
+                };
+
+                bool methodResult = (bool)tryEstimateCurrentDecayRates.Invoke(null, args);
+                object apiRates = args[1];
+                bool available = methodResult && GetBoolField(apiRates, apiCurrentRatesAvailableField);
+                if (!available)
+                    return false;
+
+                stormEstimate = GetBoolField(apiRates, apiCurrentRatesIsStormEstimateField);
+
+                double periapsisDaDt = GetDoubleField(apiRates, apiCurrentRatesPeriapsisDaDtField);
+                if (periapsisDaDt < -1e-12)
+                    decayRate = -periapsisDaDt;
+                else
+                    decayRate = GetDoubleField(apiRates, apiCurrentRatesDecayRateField);
+
+                if (decayRate <= 1e-12)
+                    decayRate = Math.Abs(GetDoubleField(apiRates, apiCurrentRatesDaDtField));
+                return decayRate > 1e-12;
+            }
+            catch
+            {
+                decayRate = 0.0;
+                stormEstimate = false;
+                return false;
+            }
         }
 
         public static EditorEstimateResult EstimateEditor(
@@ -454,6 +505,9 @@ namespace OrbitalKeeper
                 Type estimateType = apiType.GetNestedType("StationKeepingEstimate", BindingFlags.Public);
                 if (estimateType == null)
                     return false;
+                Type currentDecayRatesType = apiType.GetNestedType("CurrentDecayRates", BindingFlags.Public);
+                if (currentDecayRatesType == null)
+                    return false;
 
                 tryEstimateStationKeepingCadence = apiType.GetMethod(
                     "TryEstimateStationKeepingCadence",
@@ -484,19 +538,41 @@ namespace OrbitalKeeper
                     },
                     null);
 
+                tryEstimateCurrentDecayRates = apiType.GetMethod(
+                    "TryEstimateCurrentDecayRates",
+                    BindingFlags.Public | BindingFlags.Static,
+                    null,
+                    new[]
+                    {
+                        typeof(Vessel),
+                        currentDecayRatesType.MakeByRefType()
+                    },
+                    null);
+
                 apiAvailableField = estimateType.GetField("Available");
                 apiIsStormEstimateField = estimateType.GetField("IsStormEstimate");
                 apiSecondsToToleranceField = estimateType.GetField("SecondsToTolerance");
                 apiDecayRateField = estimateType.GetField("DecayRate");
                 apiDeltaVToRestoreToleranceDropField =
                     estimateType.GetField("DeltaVToRestoreToleranceDrop");
+                apiCurrentRatesAvailableField = currentDecayRatesType.GetField("Available");
+                apiCurrentRatesIsStormEstimateField = currentDecayRatesType.GetField("IsStormEstimate");
+                apiCurrentRatesDecayRateField = currentDecayRatesType.GetField("DecayRate");
+                apiCurrentRatesDaDtField = currentDecayRatesType.GetField("DaDt");
+                apiCurrentRatesPeriapsisDaDtField = currentDecayRatesType.GetField("PeriapsisDaDt");
 
                 return tryEstimateStationKeepingCadence != null &&
+                       tryEstimateCurrentDecayRates != null &&
                        apiAvailableField != null &&
                        apiIsStormEstimateField != null &&
                        apiSecondsToToleranceField != null &&
                        apiDecayRateField != null &&
-                       apiDeltaVToRestoreToleranceDropField != null;
+                       apiDeltaVToRestoreToleranceDropField != null &&
+                       apiCurrentRatesAvailableField != null &&
+                       apiCurrentRatesIsStormEstimateField != null &&
+                       apiCurrentRatesDecayRateField != null &&
+                       apiCurrentRatesDaDtField != null &&
+                       apiCurrentRatesPeriapsisDaDtField != null;
             }
 
             return false;
