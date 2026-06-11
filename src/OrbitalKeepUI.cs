@@ -40,7 +40,9 @@ namespace OrbitalKeeper
         private const int FLEET_WINDOW_ID = 0x4F4B_0002;
         private const int BODY_PICKER_WINDOW_ID = 0x4F4B_0003;
         private const float BASE_FONT_SIZE = 12f;
-        private const float BASE_MAIN_WIDTH = 470f;
+        private const float BASE_MAIN_COLUMN_WIDTH = 410f;
+        private const float BASE_MAIN_COLUMN_GAP = 8f;
+        private const float BASE_MAIN_WIDTH = BASE_MAIN_COLUMN_WIDTH * 2f + BASE_MAIN_COLUMN_GAP;
         private const float BASE_FLEET_WIDTH = 350f;
         // Body picker popup dimensions (aligned with SpaceWeatherAndAtmosphericOrbitalDecay)
         private const float BODY_POPUP_MAX_WIDTH = 280f;
@@ -88,6 +90,7 @@ namespace OrbitalKeeper
         // --- Cached GUIStyles (rebuilt when font size changes) ---
         private static int _cachedFontSize;
         private static GUIStyle _labelStyle;
+        private static GUIStyle _rowLabelStyle;
         private static GUIStyle _boldStyle;
         private static GUIStyle _richStyle;
         private static GUIStyle _buttonStyle;
@@ -424,6 +427,9 @@ namespace OrbitalKeeper
             DrawStatusSection();
             GUILayout.Space(8);
 
+            GUILayout.BeginHorizontal();
+
+            GUILayout.BeginVertical(GUILayout.Width(GetMainColumnWidth()));
             // --- Current orbit display ---
             DrawCurrentOrbitSection();
             GUILayout.Space(8);
@@ -432,17 +438,23 @@ namespace OrbitalKeeper
             DrawTargetParametersSection();
             GUILayout.Space(8);
 
-            // --- Configuration ---
-            DrawConfigSection();
-            GUILayout.Space(8);
-
             // --- Action buttons ---
             DrawActionButtons();
-            GUILayout.Space(8);
+            GUILayout.EndVertical();
 
+            GUILayout.Space(GetMainColumnGap());
+
+            GUILayout.BeginVertical(GUILayout.Width(GetMainColumnWidth()));
             // --- Statistics ---
             DrawStatisticsSection();
-            GUILayout.Space(4);
+            GUILayout.Space(8);
+
+            // --- Configuration ---
+            DrawConfigSection();
+            GUILayout.EndVertical();
+
+            GUILayout.EndHorizontal();
+            GUILayout.Space(8);
 
             // --- Footer ---
             DrawFooterButtons();
@@ -458,7 +470,7 @@ namespace OrbitalKeeper
         private void DrawStatusSection()
         {
             GUILayout.BeginHorizontal(_boxStyle);
-            GUILayout.Label(Loc.StatusLabel, _labelStyle, GUILayout.Width(GetStatusLabelWidth()));
+            GUILayout.Label(Loc.StatusLabel, _rowLabelStyle, GUILayout.Width(GetStatusLabelWidth()));
 
             string statusText;
             switch (editData.Status)
@@ -537,7 +549,7 @@ namespace OrbitalKeeper
                 inputInterval = DrawInputRow(Loc.CheckInterval, inputInterval);
 
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(Loc.EngineModeLabel, _labelStyle, GUILayout.Width(GetEngineModeLabelWidth()));
+                GUILayout.Label(Loc.EngineModeLabel, _rowLabelStyle, GUILayout.Width(GetLabelWidth()));
                 if (GUILayout.Toggle(editData.EngineMode == EngineSelectionMode.IgnitedOnly,
                     Loc.EngineModeIgnited, _toggleStyle, GUILayout.Width(GetEngineModeOptionWidth())))
                 {
@@ -582,7 +594,7 @@ namespace OrbitalKeeper
                 // GUI hotkey config
                 guiHotkeyInput = DrawInputRow(Loc.GuiHotkeyLabel, guiHotkeyInput);
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(Loc.GuiHotkeyModifiers, _labelStyle, GUILayout.Width(GetLabelWidth()));
+                GUILayout.Label(Loc.GuiHotkeyModifiers, _rowLabelStyle, GUILayout.Width(GetLabelWidth()));
                 guiHotkeyAlt = GUILayout.Toggle(guiHotkeyAlt, Loc.ModAlt, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
                 guiHotkeyCtrl = GUILayout.Toggle(guiHotkeyCtrl, Loc.ModCtrl, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
                 guiHotkeyShift = GUILayout.Toggle(guiHotkeyShift, Loc.ModShift, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
@@ -1259,7 +1271,7 @@ namespace OrbitalKeeper
         private static void DrawParamRow(string label, string value)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, _labelStyle, GUILayout.Width(GetLabelWidth()));
+            GUILayout.Label(label, _rowLabelStyle, GUILayout.Width(GetLabelWidth()));
             GUILayout.Label(value, _labelStyle);
             GUILayout.EndHorizontal();
         }
@@ -1281,7 +1293,7 @@ namespace OrbitalKeeper
         private static string DrawInputRow(string label, string currentValue)
         {
             GUILayout.BeginHorizontal();
-            GUILayout.Label(label, _labelStyle, GUILayout.Width(GetLabelWidth()));
+            GUILayout.Label(label, _rowLabelStyle, GUILayout.Width(GetLabelWidth()));
             string newValue = GUILayout.TextField(currentValue, _textFieldStyle, GUILayout.Width(GetInputWidth()));
             GUILayout.EndHorizontal();
             return newValue;
@@ -1324,6 +1336,16 @@ namespace OrbitalKeeper
         private static float GetMainMinWidth()
         {
             return Mathf.Round(BASE_MAIN_WIDTH * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+        }
+
+        private static float GetMainColumnWidth()
+        {
+            return Mathf.Round(BASE_MAIN_COLUMN_WIDTH * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+        }
+
+        private static float GetMainColumnGap()
+        {
+            return Mathf.Round(BASE_MAIN_COLUMN_GAP * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
         }
 
         private static float GetFleetMinWidth()
@@ -1369,7 +1391,7 @@ namespace OrbitalKeeper
 
         private static float GetEngineModeOptionWidth()
         {
-            return Mathf.Round(120f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return Mathf.Round(105f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
         }
 
         private static float GetHotkeyModifierWidth()
@@ -1496,6 +1518,7 @@ namespace OrbitalKeeper
             _cachedFontSize = size;
 
             _labelStyle = new GUIStyle(GUI.skin.label) { fontSize = size };
+            _rowLabelStyle = new GUIStyle(_labelStyle) { alignment = TextAnchor.MiddleLeft };
             _boldStyle = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = FontStyle.Bold };
             _richStyle = new GUIStyle(GUI.skin.label) { fontSize = size, richText = true, wordWrap = true };
             _buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = size };
