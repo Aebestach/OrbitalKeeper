@@ -16,9 +16,6 @@
 # Mono auto generated files
 mono_crash.*
 
-# Build artifacts copied into GameData
-/GameData/OrbitalKeeper/Plugin/
-
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
