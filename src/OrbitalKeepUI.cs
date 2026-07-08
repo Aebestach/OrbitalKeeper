@@ -91,6 +91,7 @@ namespace OrbitalKeeper
         private static GUIStyle _rowLabelStyle;
         private static GUIStyle _boldStyle;
         private static GUIStyle _richStyle;
+        private static GUIStyle _statusRichStyle;
         private static GUIStyle _buttonStyle;
         private static GUIStyle _toggleStyle;
         private static GUIStyle _textFieldStyle;
@@ -111,6 +112,7 @@ namespace OrbitalKeeper
             // Ensure localization strings are loaded
             Loc.Load();
 
+            OrbitalKeepParameters.Instance?.ApplyAutoUiScale();
             windowRect.width = GetMainMinWidth();
             fleetWindowRect.width = GetFleetMinWidth();
 
@@ -481,8 +483,9 @@ namespace OrbitalKeeper
 
         private void DrawStatusSection()
         {
-            GUILayout.BeginHorizontal(_boxStyle);
-            GUILayout.Label(Loc.StatusLabel, _rowLabelStyle, GUILayout.Width(GetStatusLabelWidth()));
+            float rowH = ButtonHeight;
+            GUILayout.BeginHorizontal(_boxStyle, GUILayout.Height(rowH + 12f));
+            GUILayout.Label(Loc.StatusLabel, _rowLabelStyle, GUILayout.Width(GetStatusLabelWidth()), GUILayout.Height(rowH));
 
             string statusText;
             switch (editData.Status)
@@ -513,7 +516,7 @@ namespace OrbitalKeeper
                     break;
             }
 
-            GUILayout.Label(statusText, _richStyle);
+            GUILayout.Label(statusText, _statusRichStyle, GUILayout.ExpandWidth(true), GUILayout.Height(rowH));
             GUILayout.EndHorizontal();
         }
 
@@ -1514,6 +1517,14 @@ namespace OrbitalKeeper
                 wordWrap = true,
                 clipping = TextClipping.Overflow,
                 alignment = TextAnchor.UpperLeft
+            };
+            _statusRichStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = size,
+                richText = true,
+                wordWrap = false,
+                clipping = TextClipping.Overflow,
+                alignment = TextAnchor.MiddleLeft
             };
             _buttonStyle = CreateSingleLineStyle(GUI.skin.button, size, TextAnchor.MiddleCenter, FontStyle.Bold);
             _buttonStyle.padding = new RectOffset(GUI.skin.button.padding.left, GUI.skin.button.padding.right, 6, 6);

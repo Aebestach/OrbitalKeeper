@@ -47,6 +47,7 @@ namespace OrbitalKeeper
             }
 
             Loc.Load();
+            OrbitalKeepParameters.Instance?.ApplyAutoUiScale();
             OrbitalKeepSettings.SyncFromParameters();
             inputTolerance = OrbitalKeepSettings.DefaultTolerance.ToString("F1");
             inputInterval = OrbitalKeepSettings.DefaultCheckInterval.ToString("F0");

@@ -38,6 +38,11 @@ namespace OrbitalKeeper
             displayFormat = "N0")]
         public float maxCorrectionDeltaV = 100f;
 
+        [GameParameters.CustomParameterUI(
+            "#LOC_OrbKeep_ParamUiScaleAuto",
+            toolTip = "#LOC_OrbKeep_ParamUiScaleAuto_tip")]
+        public bool uiScaleAuto = true;
+
         [GameParameters.CustomFloatParameterUI(
             "#LOC_OrbKeep_ParamUiScalePercent",
             toolTip = "#LOC_OrbKeep_ParamUiScalePercent_tip",
@@ -45,7 +50,7 @@ namespace OrbitalKeeper
             maxValue = 150f,
             stepCount = 100,
             displayFormat = "N0")]
-        public float uiScalePercent = 75f;
+        public float uiScalePercent = 100f;
 
         [GameParameters.CustomParameterUI(
             "#LOC_OrbKeep_ParamEnableToolbarButton",
@@ -131,10 +136,44 @@ namespace OrbitalKeeper
 
         public override void OnLoad(ConfigNode node)
         {
+            bool hadAutoFlag = node != null && node.HasValue("uiScaleAuto");
+            bool hadUiScale = node != null && node.HasValue("uiScalePercent");
             base.OnLoad(node);
             instance = null;
 
+            if (!hadAutoFlag)
+            {
+                uiScaleAuto = !hadUiScale ||
+                    Mathf.Approximately(uiScalePercent, 100f) ||
+                    Mathf.Approximately(uiScalePercent, 80f) ||
+                    Mathf.Approximately(uiScalePercent, 75f);
+            }
+
+            ApplyAutoUiScale();
             TryMigrateLegacyGeneralSettings(node);
+        }
+
+        internal void ApplyAutoUiScale()
+        {
+            if (!uiScaleAuto)
+                return;
+            uiScalePercent = UIScale.DefaultUiScalePercent;
+        }
+
+        public override bool Enabled(MemberInfo member, GameParameters parameters)
+        {
+            var orbKeep = parameters?.CustomParams<OrbitalKeepParameters>();
+            if (orbKeep != null && orbKeep.uiScaleAuto)
+                orbKeep.ApplyAutoUiScale();
+            return true;
+        }
+
+        public override bool Interactible(MemberInfo member, GameParameters parameters)
+        {
+            var orbKeep = parameters?.CustomParams<OrbitalKeepParameters>();
+            if (member.Name == "uiScalePercent" && orbKeep != null && orbKeep.uiScaleAuto)
+                return false;
+            return true;
         }
 
         private void TryMigrateLegacyGeneralSettings(ConfigNode node)
