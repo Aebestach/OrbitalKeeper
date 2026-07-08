@@ -1,209 +1,55 @@
-using System.IO;
 using UnityEngine;
 
 namespace OrbitalKeeper
 {
     /// <summary>
-    /// Global settings for the Orbital Keeper mod.
-    /// Loaded from GameData/OrbitalKeeper/OrbitalKeeper.cfg via GameDatabase.
+    /// Runtime accessors for Orbital Keeper settings stored in difficulty parameters.
     /// </summary>
     public static class OrbitalKeepSettings
     {
-        // --- Default values for new vessels ---
+        private const double FallbackTolerance = 5.0;
+        private const double FallbackCheckInterval = 3600.0;
+        private const double FallbackEcPerDeltaV = 5.0;
+        private const double FallbackMaxCorrectionDeltaV = 100.0;
+        private const double FallbackMinSafeAltitudeMargin = 10000.0;
+        private const float FallbackMessageDuration = 5.0f;
 
-        /// <summary>Default tolerance percentage for new vessels.</summary>
-        public static double DefaultTolerance { get; private set; } = 5.0;
+        public static double DefaultTolerance =>
+            OrbitalKeepGameplayParameters.Instance?.defaultTolerance ?? FallbackTolerance;
 
-        /// <summary>Default check interval in game seconds.</summary>
-        public static double DefaultCheckInterval { get; private set; } = 3600.0;
+        public static double DefaultCheckInterval =>
+            OrbitalKeepGameplayParameters.Instance?.defaultCheckInterval ?? FallbackCheckInterval;
 
-        /// <summary>Default engine selection mode for new vessels.</summary>
-        public static EngineSelectionMode DefaultEngineMode { get; private set; } = EngineSelectionMode.IgnitedOnly;
+        public static EngineSelectionMode DefaultEngineMode =>
+            OrbitalKeepGameplayParameters.Instance?.ResolveDefaultEngineMode() ?? EngineSelectionMode.IgnitedOnly;
 
-        // --- Resource consumption rates ---
-
-        /// <summary>EC consumed per 1 m/s of delta-v spent on station-keeping (per-save difficulty setting).</summary>
         public static double ECPerDeltaV =>
-            OrbitalKeepParameters.Instance?.ecPerDeltaV ?? _cfgEcPerDeltaV;
+            OrbitalKeepParameters.Instance?.ecPerDeltaV ?? FallbackEcPerDeltaV;
 
-        // --- Safety limits ---
+        public static double MinSafeAltitudeMargin =>
+            OrbitalKeepGameplayParameters.Instance?.minSafeAltitudeMargin ?? FallbackMinSafeAltitudeMargin;
 
-        /// <summary>Minimum altitude above atmosphere (meters) below which station-keeping warns.</summary>
-        public static double MinSafeAltitudeMargin { get; private set; } = 10000.0;
-
-        /// <summary>Maximum delta-v that can be applied in a single correction (m/s).
-        /// Prevents catastrophic orbit changes from misconfiguration (per-save difficulty setting).</summary>
         public static double MaxCorrectionDeltaV =>
-            OrbitalKeepParameters.Instance?.maxCorrectionDeltaV ?? _cfgMaxCorrectionDeltaV;
+            OrbitalKeepParameters.Instance?.maxCorrectionDeltaV ?? FallbackMaxCorrectionDeltaV;
 
-        private static double _cfgEcPerDeltaV = 5.0;
-        private static double _cfgMaxCorrectionDeltaV = 100.0;
+        public static bool ShowCorrectionMessages =>
+            OrbitalKeepGameplayParameters.Instance?.showCorrectionMessages ?? true;
 
-        // --- Notification settings ---
+        public static bool ShowResourceWarnings =>
+            OrbitalKeepGameplayParameters.Instance?.showResourceWarnings ?? true;
 
-        /// <summary>Whether to show on-screen messages for automatic corrections.</summary>
-        public static bool ShowCorrectionMessages { get; private set; } = true;
+        public static float MessageDuration =>
+            OrbitalKeepGameplayParameters.Instance?.messageDuration ?? FallbackMessageDuration;
 
-        /// <summary>Whether to show warnings when resources are insufficient.</summary>
-        public static bool ShowResourceWarnings { get; private set; } = true;
-
-        /// <summary>Duration of on-screen messages in seconds.</summary>
-        public static float MessageDuration { get; private set; } = 5.0f;
-
-        // --- UI settings (saved per-user in PluginData/config.xml) ---
-
-        /// <summary>UI font size. Range: 10 - 20. Default 12.</summary>
-        public static int FontSize { get; set; } = 12;
-        /// <summary>GUI toggle key. Default: O.</summary>
-        public static KeyCode GuiToggleKey { get; set; } = KeyCode.O;
-        /// <summary>Require Alt modifier for GUI toggle hotkey.</summary>
-        public static bool GuiToggleAlt { get; set; } = true;
-        /// <summary>Require Ctrl modifier for GUI toggle hotkey.</summary>
-        public static bool GuiToggleCtrl { get; set; } = false;
-        /// <summary>Require Shift modifier for GUI toggle hotkey.</summary>
-        public static bool GuiToggleShift { get; set; } = false;
-        /// <summary>Whether to register the stock toolbar button.</summary>
-        public static bool EnableToolbarButton { get; set; } = false;
-
-        private const int FONT_SIZE_MIN = 10;
-        private const int FONT_SIZE_MAX = 20;
-        private static bool _hasUserToolbarButtonOverride;
-        private static bool _userToolbarButtonValue;
-
-        /// <summary>
-        /// Loads settings from GameDatabase. Called once on mod initialization.
-        /// Searches for a config node named ORBITAL_KEEPER_SETTINGS.
-        /// Also loads per-user UI settings from PluginData/config.xml.
-        /// </summary>
-        public static void LoadSettings()
+        public static void SyncFromParameters()
         {
-            // Load per-user settings (font size, window positions, etc.)
-            LoadUserSettings();
-            ConfigNode[] nodes = GameDatabase.Instance.GetConfigNodes("ORBITAL_KEEPER_SETTINGS");
-            if (nodes == null || nodes.Length == 0)
+            if (OrbitalKeepGameplayParameters.Instance == null && OrbitalKeepParameters.Instance == null)
             {
-                Debug.Log("[OrbitalKeeper] No settings config found, using defaults.");
+                Debug.Log("[OrbitalKeeper] No difficulty parameters loaded, using defaults.");
                 return;
             }
 
-            ConfigNode settings = nodes[0];
-
-            DefaultTolerance = ParseDouble(settings, "defaultTolerance", DefaultTolerance);
-            DefaultCheckInterval = ParseDouble(settings, "defaultCheckInterval", DefaultCheckInterval);
-            _cfgEcPerDeltaV = ParseDouble(settings, "ecPerDeltaV", _cfgEcPerDeltaV);
-            MinSafeAltitudeMargin = ParseDouble(settings, "minSafeAltitudeMargin", MinSafeAltitudeMargin);
-            _cfgMaxCorrectionDeltaV = ParseDouble(settings, "maxCorrectionDeltaV", _cfgMaxCorrectionDeltaV);
-            MessageDuration = (float)ParseDouble(settings, "messageDuration", MessageDuration);
-            if (settings.HasValue("enableToolbarButton"))
-            {
-                bool.TryParse(settings.GetValue("enableToolbarButton"), out bool enableToolbarButton);
-                EnableToolbarButton = enableToolbarButton;
-            }
-            if (_hasUserToolbarButtonOverride)
-            {
-                EnableToolbarButton = _userToolbarButtonValue;
-            }
-
-            if (settings.HasValue("defaultEngineMode"))
-            {
-                if (System.Enum.TryParse(settings.GetValue("defaultEngineMode"), out EngineSelectionMode mode))
-                    DefaultEngineMode = mode;
-            }
-
-            if (settings.HasValue("showCorrectionMessages"))
-            {
-                bool.TryParse(settings.GetValue("showCorrectionMessages"), out bool showCorr);
-                ShowCorrectionMessages = showCorr;
-            }
-
-            if (settings.HasValue("showResourceWarnings"))
-            {
-                bool.TryParse(settings.GetValue("showResourceWarnings"), out bool showRes);
-                ShowResourceWarnings = showRes;
-            }
-
-            Debug.Log($"[OrbitalKeeper] Settings loaded: Tolerance={DefaultTolerance}%, CheckInterval={DefaultCheckInterval}s, EC/dV fallback={_cfgEcPerDeltaV}, MaxDV fallback={_cfgMaxCorrectionDeltaV}m/s");
-        }
-
-        // ======================================================================
-        //  PER-USER SETTINGS (saved locally, not in save file)
-        // ======================================================================
-
-        /// <summary>Loads per-user UI settings from PluginData/config.xml.</summary>
-        private static void LoadUserSettings()
-        {
-            _hasUserToolbarButtonOverride = false;
-            string path = GetUserSettingsPath();
-            if (File.Exists(path))
-            {
-                ConfigNode node = ConfigNode.Load(path);
-                if (node != null && node.HasValue("FontSize"))
-                {
-                    int.TryParse(node.GetValue("FontSize"), out int size);
-                    FontSize = size;
-                }
-                if (node != null && node.HasValue("GuiToggleKey"))
-                {
-                    if (System.Enum.TryParse(node.GetValue("GuiToggleKey"), true, out KeyCode key))
-                        GuiToggleKey = key;
-                }
-                if (node != null && node.HasValue("GuiToggleAlt"))
-                {
-                    bool.TryParse(node.GetValue("GuiToggleAlt"), out bool alt);
-                    GuiToggleAlt = alt;
-                }
-                if (node != null && node.HasValue("GuiToggleCtrl"))
-                {
-                    bool.TryParse(node.GetValue("GuiToggleCtrl"), out bool ctrl);
-                    GuiToggleCtrl = ctrl;
-                }
-                if (node != null && node.HasValue("GuiToggleShift"))
-                {
-                    bool.TryParse(node.GetValue("GuiToggleShift"), out bool shift);
-                    GuiToggleShift = shift;
-                }
-                if (node != null && node.HasValue("EnableToolbarButton"))
-                {
-                    bool.TryParse(node.GetValue("EnableToolbarButton"), out bool enableToolbarButton);
-                    _hasUserToolbarButtonOverride = true;
-                    _userToolbarButtonValue = enableToolbarButton;
-                    EnableToolbarButton = enableToolbarButton;
-                }
-            }
-            FontSize = System.Math.Max(FONT_SIZE_MIN, System.Math.Min(FONT_SIZE_MAX, FontSize));
-            if (GuiToggleKey == KeyCode.None)
-                GuiToggleKey = KeyCode.O;
-        }
-
-        /// <summary>Saves per-user UI settings to PluginData/config.xml.</summary>
-        public static void SaveUserSettings()
-        {
-            string path = GetUserSettingsPath();
-            string directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory))
-                Directory.CreateDirectory(directory);
-
-            var node = new ConfigNode("ORBITAL_KEEPER_USER_SETTINGS");
-            node.AddValue("FontSize", FontSize);
-            node.AddValue("GuiToggleKey", GuiToggleKey.ToString());
-            node.AddValue("GuiToggleAlt", GuiToggleAlt);
-            node.AddValue("GuiToggleCtrl", GuiToggleCtrl);
-            node.AddValue("GuiToggleShift", GuiToggleShift);
-            node.AddValue("EnableToolbarButton", EnableToolbarButton);
-            node.Save(path);
-        }
-
-        private static string GetUserSettingsPath()
-        {
-            return Path.Combine(KSPUtil.ApplicationRootPath, "GameData", "OrbitalKeeper", "PluginData", "config.xml");
-        }
-
-        private static double ParseDouble(ConfigNode node, string key, double defaultValue)
-        {
-            string val = node.GetValue(key);
-            if (val != null && double.TryParse(val, out double result))
-                return result;
-            return defaultValue;
+            Debug.Log($"[OrbitalKeeper] Settings loaded: Tolerance={DefaultTolerance}%, CheckInterval={DefaultCheckInterval}s, EC/dV={ECPerDeltaV}, MaxDV={MaxCorrectionDeltaV}m/s");
         }
     }
 }

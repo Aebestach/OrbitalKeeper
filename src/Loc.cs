@@ -80,6 +80,7 @@ namespace OrbitalKeeper
         public static string AllowRcsEnginesToggle = "Enable RCS Thrusters";
         public static string ApplySettings = "Apply Settings";
         public static string FontSizeLabel = "Font Size: <<1>>";
+        public static string UiScalePercentLabel = "UI Scale (%): <<1>>";
         public static string ConfigAutoKeepSettings = "Auto Station-Keeping Settings";
         public static string ConfigGuiSettings = "GUI Settings";
         public static string GuiHotkeyLabel = "GUI Hotkey Key";
@@ -255,6 +256,7 @@ namespace OrbitalKeeper
             AllowRcsEnginesToggle = Get("#LOC_OrbKeep_AllowRcsEnginesToggle", AllowRcsEnginesToggle);
             ApplySettings = Get("#LOC_OrbKeep_ApplySettings", ApplySettings);
             FontSizeLabel = Get("#LOC_OrbKeep_FontSizeLabel", FontSizeLabel);
+            UiScalePercentLabel = Get("#LOC_OrbKeep_UiScalePercentLabel", UiScalePercentLabel);
             ConfigAutoKeepSettings = Get("#LOC_OrbKeep_ConfigAutoKeepSettings", ConfigAutoKeepSettings);
             ConfigGuiSettings = Get("#LOC_OrbKeep_ConfigGuiSettings", ConfigGuiSettings);
             GuiHotkeyLabel = Get("#LOC_OrbKeep_GuiHotkeyLabel", GuiHotkeyLabel);

@@ -40,7 +40,7 @@ namespace OrbitalKeeper
             Instance = this;
 
             // Load global settings and localization on first scenario creation
-            OrbitalKeepSettings.LoadSettings();
+            OrbitalKeepSettings.SyncFromParameters();
             Loc.Load();
 
             // Subscribe to vessel events for cleanup

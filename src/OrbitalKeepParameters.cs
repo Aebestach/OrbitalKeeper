@@ -1,4 +1,9 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Reflection;
 using KSP.Localization;
+using UnityEngine;
 
 namespace OrbitalKeeper
 {
@@ -12,7 +17,7 @@ namespace OrbitalKeeper
         public override GameParameters.GameMode GameMode => GameParameters.GameMode.ANY;
         public override string Section => Localizer.Format("#LOC_OrbKeep_ParamSection");
         public override string DisplaySection => Section;
-        public override int SectionOrder => 0;
+        public override int SectionOrder => 1;
         public override bool HasPresets => true;
 
         [GameParameters.CustomFloatParameterUI(
@@ -33,6 +38,40 @@ namespace OrbitalKeeper
             displayFormat = "N0")]
         public float maxCorrectionDeltaV = 100f;
 
+        [GameParameters.CustomFloatParameterUI(
+            "#LOC_OrbKeep_ParamUiScalePercent",
+            toolTip = "#LOC_OrbKeep_ParamUiScalePercent_tip",
+            minValue = 50f,
+            maxValue = 150f,
+            stepCount = 100,
+            displayFormat = "N0")]
+        public float uiScalePercent = 75f;
+
+        [GameParameters.CustomParameterUI(
+            "#LOC_OrbKeep_ParamEnableToolbarButton",
+            toolTip = "#LOC_OrbKeep_ParamEnableToolbarButton_tip")]
+        public bool enableToolbarButton = true;
+
+        [GameParameters.CustomStringParameterUI(
+            "#LOC_OrbKeep_ParamHotkeyKey",
+            toolTip = "#LOC_OrbKeep_ParamHotkeyKey_tip")]
+        public string hotkeyKey = "O";
+
+        [GameParameters.CustomParameterUI(
+            "#LOC_OrbKeep_ParamHotkeyAlt",
+            toolTip = "#LOC_OrbKeep_ParamHotkeyAlt_tip")]
+        public bool hotkeyAlt = true;
+
+        [GameParameters.CustomParameterUI(
+            "#LOC_OrbKeep_ParamHotkeyCtrl",
+            toolTip = "#LOC_OrbKeep_ParamHotkeyCtrl_tip")]
+        public bool hotkeyCtrl = false;
+
+        [GameParameters.CustomParameterUI(
+            "#LOC_OrbKeep_ParamHotkeyShift",
+            toolTip = "#LOC_OrbKeep_ParamHotkeyShift_tip")]
+        public bool hotkeyShift = false;
+
         private static OrbitalKeepParameters instance;
 
         public static OrbitalKeepParameters Instance
@@ -43,6 +82,28 @@ namespace OrbitalKeeper
                     instance = HighLogic.CurrentGame.Parameters.CustomParams<OrbitalKeepParameters>();
                 return instance;
             }
+        }
+
+        internal KeyCode ResolveHotkeyKey()
+        {
+            if (string.IsNullOrEmpty(hotkeyKey) || string.Equals(hotkeyKey, "None", StringComparison.OrdinalIgnoreCase))
+                return KeyCode.None;
+
+            return Enum.TryParse(hotkeyKey, true, out KeyCode parsed) ? parsed : KeyCode.O;
+        }
+
+        internal bool IsHotkeyPressed()
+        {
+            KeyCode key = ResolveHotkeyKey();
+            if (key == KeyCode.None || !Input.GetKeyDown(key))
+                return false;
+            if (hotkeyAlt && !(Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt)))
+                return false;
+            if (hotkeyCtrl && !(Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)))
+                return false;
+            if (hotkeyShift && !(Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)))
+                return false;
+            return true;
         }
 
         public override void SetDifficultyPreset(GameParameters.Preset preset)
@@ -72,6 +133,36 @@ namespace OrbitalKeeper
         {
             base.OnLoad(node);
             instance = null;
+
+            TryMigrateLegacyGeneralSettings(node);
+        }
+
+        private void TryMigrateLegacyGeneralSettings(ConfigNode node)
+        {
+            if (node.HasValue("ecPerDeltaV"))
+                return;
+
+            ConfigNode[] nodes = GameDatabase.Instance?.GetConfigNodes("ORBITAL_KEEPER_SETTINGS");
+            if (nodes == null || nodes.Length == 0)
+                return;
+
+            ConfigNode settings = nodes[0];
+            settings.TryGetValue("ecPerDeltaV", ref ecPerDeltaV);
+            settings.TryGetValue("maxCorrectionDeltaV", ref maxCorrectionDeltaV);
+
+            if (settings.HasValue("enableToolbarButton"))
+                bool.TryParse(settings.GetValue("enableToolbarButton"), out enableToolbarButton);
+        }
+
+        public override IList ValidValues(MemberInfo member)
+        {
+            if (member.Name != "hotkeyKey")
+                return null;
+
+            var keys = new List<string> { "None" };
+            for (char letter = 'A'; letter <= 'Z'; letter++)
+                keys.Add(letter.ToString());
+            return keys;
         }
     }
 }

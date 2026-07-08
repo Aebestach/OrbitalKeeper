@@ -104,37 +104,7 @@
 
 ## 配置
 
-### 困难设置（按存档）
-
-新建或编辑存档时，在 **困难设置 → 轨道守护者** 中配置以下选项。选择全局难度预设（简单 / 普通 / 中等 / 困难）会自动加载对应数值，各字段仍可单独调整。
-
-| 选项 | 描述 | 范围 |
-| :--- | :--- | :--- |
-| 每 delta-v 电量消耗 | 主引擎每 1 m/s Δv 消耗的电量（RCS 除外） | 0-20 |
-| 单次修正 Δv 上限 | 单次修正的最大 Δv（m/s） | 1-200 |
-
-#### 难度预设
-
-| | 简单 | 普通 | 中等 | 困难 |
-|---|:---:|:---:|:---:|:---:|
-| 每 delta-v 电量消耗 | 0 | 5 | 10 | 20 |
-| 单次修正 Δv 上限 (m/s) | 200 | 100 | 50 | 25 |
-
-### 全局配置
-
-其余默认值位于：
-`GameData/OrbitalKeeper/OrbitalKeeper.cfg`
-
-| 配置项 | 描述 | 默认值 |
-| :--- | :--- | :--- |
-| `defaultTolerance` | 载具的轨道容差百分比；Ap/Pe 按比例，Inc/Ecc 按绝对值（含最小阈值），容差内不修正 | `5.0` |
-| `defaultCheckInterval` | 检查间隔（游戏秒） | `3600` |
-| `defaultEngineMode` | 引擎选择模式：`IgnitedOnly` 仅使用已点火引擎；`ActiveNotShutdown` 使用已激活且未手动关闭的引擎 | `IgnitedOnly` |
-| `minSafeAltitudeMargin` | 大气层以上的最小安全高度（m） | `10000.0` |
-| `showCorrectionMessages` | 是否显示修正提示 | `True` |
-| `showResourceWarnings` | 是否显示资源不足警告 | `True` |
-| `messageDuration` | 提示信息持续时间（s） | `5.0` |
-| `enableToolbarButton` | 是否启用 AppLauncher 工具栏按钮 | `True` |
+按存档的选项位于 **困难设置 → 轨道守护者**（创建或编辑存档时）。鼠标悬停各项可查看说明。
 
 ### 容差说明
 
