@@ -39,11 +39,15 @@ namespace OrbitalKeeper
         private const int WINDOW_ID = 0x4F4B_0001; // "OK" prefix
         private const int FLEET_WINDOW_ID = 0x4F4B_0002;
         private const int BODY_PICKER_WINDOW_ID = 0x4F4B_0003;
-        private const float BASE_FONT_SIZE = 12f;
+        private const float BASE_FONT_SIZE = 18f;
         private const float BASE_MAIN_COLUMN_WIDTH = 410f;
         private const float BASE_MAIN_COLUMN_GAP = 8f;
         private const float BASE_MAIN_WIDTH = BASE_MAIN_COLUMN_WIDTH * 2f + BASE_MAIN_COLUMN_GAP;
         private const float BASE_FLEET_WIDTH = 350f;
+        private const float FLEET_SCROLL_HEIGHT = 320f;
+        private const float FLEET_ENTRY_SPACING = 4f;
+        private const float FLEET_LEVEL2_INSET = 10f;
+        private const float FLEET_LEVEL1_INSET = 3f;
         // Body picker popup dimensions (aligned with SpaceWeatherAndAtmosphericOrbitalDecay)
         private const float BODY_POPUP_MAX_WIDTH = 280f;
         private const float BODY_POPUP_DEFAULT_WIDTH = 180f;
@@ -69,16 +73,10 @@ namespace OrbitalKeeper
         private string inputTolerance = "5.0";
         private bool inputAutoKeepEnabled;
         private bool inputAllowRcs;
-        private string inputFontSize = "12";
-        private string guiHotkeyInput = "O";
-        private bool guiHotkeyAlt = true;
-        private bool guiHotkeyCtrl;
-        private bool guiHotkeyShift;
-        private bool guiEnableToolbarButton;
         private bool autoKeepConfigExpanded = true;
-        private bool guiConfigExpanded = true;
         private bool lastLowPeWarning;
         private bool needsLayoutRecalc;
+        private float _lastUiScaleFactor = -1f;
         private StationKeepEstimator.EstimateResult cachedLifetimeEstimate;
         private Guid cachedLifetimeVesselId = Guid.Empty;
         private int cachedLifetimeSignature;
@@ -113,22 +111,16 @@ namespace OrbitalKeeper
             // Ensure localization strings are loaded
             Loc.Load();
 
-            // Initialize GUI settings fields
-            inputFontSize = OrbitalKeepSettings.FontSize.ToString();
-            guiHotkeyInput = OrbitalKeepSettings.GuiToggleKey.ToString();
-            guiHotkeyAlt = OrbitalKeepSettings.GuiToggleAlt;
-            guiHotkeyCtrl = OrbitalKeepSettings.GuiToggleCtrl;
-            guiHotkeyShift = OrbitalKeepSettings.GuiToggleShift;
-            guiEnableToolbarButton = OrbitalKeepSettings.EnableToolbarButton;
             windowRect.width = GetMainMinWidth();
             fleetWindowRect.width = GetFleetMinWidth();
 
-            SetToolbarButtonEnabled(OrbitalKeepSettings.EnableToolbarButton);
+            var parameters = OrbitalKeepParameters.Instance;
+            SetToolbarButtonEnabled(parameters != null && parameters.enableToolbarButton);
 
             // Track vessel selection in tracking station
             GameEvents.onPlanetariumTargetChanged.Add(OnMapTargetChanged);
 
-            if (OrbitalKeepSettings.EnableToolbarButton && ApplicationLauncher.Instance != null)
+            if (parameters != null && parameters.enableToolbarButton && ApplicationLauncher.Instance != null)
                 OnAppLauncherReady();
         }
 
@@ -156,7 +148,7 @@ namespace OrbitalKeeper
 
         private void OnAppLauncherReady()
         {
-            if (!OrbitalKeepSettings.EnableToolbarButton)
+            if (OrbitalKeepParameters.Instance == null || !OrbitalKeepParameters.Instance.enableToolbarButton)
                 return;
             appLauncherReady = true;
             float now = Time.realtimeSinceStartup;
@@ -208,7 +200,7 @@ namespace OrbitalKeeper
 
         private void TryRegisterAppLauncherButton()
         {
-            if (!OrbitalKeepSettings.EnableToolbarButton)
+            if (OrbitalKeepParameters.Instance == null || !OrbitalKeepParameters.Instance.enableToolbarButton)
                 return;
             if (appButton != null || !appLauncherReady)
                 return;
@@ -237,36 +229,15 @@ namespace OrbitalKeeper
 
         private void HandleGuiHotkey()
         {
-            if (OrbitalKeepSettings.GuiToggleKey == KeyCode.None)
+            var parameters = OrbitalKeepParameters.Instance;
+            if (parameters == null || parameters.ResolveHotkeyKey() == KeyCode.None)
                 return;
-            if (!Input.GetKeyDown(OrbitalKeepSettings.GuiToggleKey))
+            if (!parameters.IsHotkeyPressed())
                 return;
-            if (!AreHotkeyModifiersSatisfied(
-                OrbitalKeepSettings.GuiToggleAlt,
-                OrbitalKeepSettings.GuiToggleCtrl,
-                OrbitalKeepSettings.GuiToggleShift))
-            {
-                return;
-            }
 
             guiVisible = !guiVisible;
             if (guiVisible)
                 RefreshVessel();
-        }
-
-        private static bool AreHotkeyModifiersSatisfied(bool requireAlt, bool requireCtrl, bool requireShift)
-        {
-            bool altPressed = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
-            bool ctrlPressed = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
-            bool shiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-
-            if (requireAlt && !altPressed)
-                return false;
-            if (requireCtrl && !ctrlPressed)
-                return false;
-            if (requireShift && !shiftPressed)
-                return false;
-            return true;
         }
 
         private void OnToolbarOn()
@@ -337,6 +308,15 @@ namespace OrbitalKeeper
             GUI.skin = HighLogic.Skin;
             RebuildStylesIfNeeded();
 
+            float uiScale = UIScale.Factor;
+            if (!Mathf.Approximately(uiScale, _lastUiScaleFactor))
+            {
+                if (_lastUiScaleFactor > 0f)
+                    ApplyUiScaleChange(_lastUiScaleFactor, uiScale);
+                _lastUiScaleFactor = uiScale;
+                needsLayoutRecalc = true;
+            }
+
             if (needsLayoutRecalc)
             {
                 windowRect.height = 0;
@@ -344,56 +324,89 @@ namespace OrbitalKeeper
             }
             UpdateFleetWindowWidth();
 
-            windowRect = ClickThruBlocker.GUILayoutWindow(WINDOW_ID, windowRect, DrawMainWindow,
-                Loc.WindowTitle, _windowStyle, GUILayout.MinWidth(GetMainMinWidth()));
-
-            if (showFleetView)
+            UIScale.BeginGUI();
+            try
             {
-                fleetWindowRect = ClickThruBlocker.GUILayoutWindow(FLEET_WINDOW_ID, fleetWindowRect, DrawFleetWindow,
-                    Loc.FleetWindowTitle, _windowStyle, GUILayout.MinWidth(GetFleetMinWidth()));
-            }
+                windowRect = ClickThruBlocker.GUILayoutWindow(WINDOW_ID, windowRect, DrawMainWindow,
+                    Loc.WindowTitle, _windowStyle, GUILayout.MinWidth(GetMainMinWidth()));
+                windowRect = UIScale.ClampToGuiScreen(windowRect);
 
-            if (showBodyPickerPopup)
-            {
-                if (!showFleetView)
+                if (showFleetView)
                 {
-                    showBodyPickerPopup = false;
-                    bodyPickerRect = new Rect(0, 0, 0, 0);
+                    fleetWindowRect = ClickThruBlocker.GUILayoutWindow(FLEET_WINDOW_ID, fleetWindowRect, DrawFleetWindow,
+                        Loc.FleetWindowTitle, _windowStyle, GUILayout.MinWidth(GetFleetMinWidth()));
+                    fleetWindowRect = UIScale.ClampToGuiScreen(fleetWindowRect);
                 }
-                else
-                {
-                    float scale = OrbitalKeepSettings.FontSize / BASE_FONT_SIZE;
-                    float maxWidth = Mathf.Round(BODY_POPUP_MAX_WIDTH * scale);
-                    float defaultWidth = Mathf.Round(BODY_POPUP_DEFAULT_WIDTH * scale);
-                    float listHeight = Mathf.Round(BODY_POPUP_LIST_HEIGHT * scale);
-                    float closeBtnHeight = (_buttonStyle ?? GUI.skin.button).CalcSize(new GUIContent(Loc.FleetBodyPickerClose)).y + 8f;
-                    float pickerHeight = 24f + 6f + listHeight + 8f + closeBtnHeight;
-                    float contentWidth = 0f;
-                    GUIStyle measureStyle = _buttonStyle ?? GUI.skin.button;
-                    float maxItemWidth = (BODY_POPUP_MAX_WIDTH - 24f) * scale;
-                    foreach (string opt in cachedBodyFilterOptions)
-                    {
-                        float w = measureStyle.CalcSize(new GUIContent(opt)).x;
-                        if (w > contentWidth) contentWidth = Mathf.Min(w, maxItemWidth);
-                    }
-                    float scrollWidth = Mathf.Max(contentWidth + 10f, defaultWidth);
-                    scrollWidth = Mathf.Min(scrollWidth, maxWidth);
-                    float pickerWidth = scrollWidth;
 
-                    if (bodyPickerRect.width <= 0 || bodyPickerRect.height <= 0)
+                if (showBodyPickerPopup)
+                {
+                    if (!showFleetView)
                     {
-                        bodyPickerRect = new Rect(
-                            (Screen.width - pickerWidth) * 0.5f,
-                            (Screen.height - pickerHeight) * 0.5f,
-                            pickerWidth,
-                            pickerHeight);
-                    }
-                    bodyPickerRect = ClickThruBlocker.GUILayoutWindow(BODY_PICKER_WINDOW_ID, bodyPickerRect, DrawBodyPickerPopup,
-                        Loc.FleetBodyPickerTitle, _windowStyle, GUILayout.Width(pickerWidth), GUILayout.Height(pickerHeight));
-                    if (!showBodyPickerPopup)
+                        showBodyPickerPopup = false;
                         bodyPickerRect = new Rect(0, 0, 0, 0);
+                    }
+                    else
+                    {
+                        Vector2 screen = UIScale.GuiScreenSize();
+                        float scale = 1f;
+                        float maxWidth = Mathf.Round(BODY_POPUP_MAX_WIDTH * scale);
+                        float defaultWidth = Mathf.Round(BODY_POPUP_DEFAULT_WIDTH * scale);
+                        float listHeight = Mathf.Round(BODY_POPUP_LIST_HEIGHT * scale);
+                        float closeBtnHeight = (_buttonStyle ?? GUI.skin.button).CalcSize(new GUIContent(Loc.FleetBodyPickerClose)).y + 8f;
+                        float pickerHeight = 24f + 6f + listHeight + 8f + closeBtnHeight;
+                        float contentWidth = 0f;
+                        GUIStyle measureStyle = _buttonStyle ?? GUI.skin.button;
+                        float maxItemWidth = (BODY_POPUP_MAX_WIDTH - 24f) * scale;
+                        foreach (string opt in cachedBodyFilterOptions)
+                        {
+                            float w = measureStyle.CalcSize(new GUIContent(opt)).x;
+                            if (w > contentWidth) contentWidth = Mathf.Min(w, maxItemWidth);
+                        }
+                        float scrollWidth = Mathf.Max(contentWidth + 10f, defaultWidth);
+                        scrollWidth = Mathf.Min(scrollWidth, maxWidth);
+                        float pickerWidth = scrollWidth;
+
+                        if (bodyPickerRect.width <= 0 || bodyPickerRect.height <= 0)
+                        {
+                            bodyPickerRect = new Rect(
+                                (screen.x - pickerWidth) * 0.5f,
+                                (screen.y - pickerHeight) * 0.5f,
+                                pickerWidth,
+                                pickerHeight);
+                        }
+                        bodyPickerRect = ClickThruBlocker.GUILayoutWindow(BODY_PICKER_WINDOW_ID, bodyPickerRect, DrawBodyPickerPopup,
+                            Loc.FleetBodyPickerTitle, _windowStyle, GUILayout.Width(pickerWidth), GUILayout.Height(pickerHeight));
+                        bodyPickerRect = UIScale.ClampToGuiScreen(bodyPickerRect);
+                        if (!showBodyPickerPopup)
+                            bodyPickerRect = new Rect(0, 0, 0, 0);
+                    }
                 }
             }
+            finally
+            {
+                UIScale.EndGUI();
+            }
+        }
+
+        private void ApplyUiScaleChange(float oldScale, float newScale)
+        {
+            if (oldScale <= 0f || newScale <= 0f)
+                return;
+
+            windowRect = ScaleWindowPosition(windowRect, oldScale, newScale);
+            fleetWindowRect = ScaleWindowPosition(fleetWindowRect, oldScale, newScale);
+            bodyPickerRect = new Rect(0, 0, 0, 0);
+        }
+
+        private static Rect ScaleWindowPosition(Rect rect, float oldScale, float newScale)
+        {
+            if (rect.width <= 0f && rect.height <= 0f)
+                return rect;
+
+            float ratio = oldScale / newScale;
+            rect.x *= ratio;
+            rect.y *= ratio;
+            return UIScale.ClampToGuiScreen(rect);
         }
 
         private void DrawMainWindow(int id)
@@ -450,7 +463,6 @@ namespace OrbitalKeeper
             GUILayout.Space(8);
 
             // --- Configuration ---
-            DrawConfigSection();
             GUILayout.EndVertical();
 
             GUILayout.EndHorizontal();
@@ -527,7 +539,7 @@ namespace OrbitalKeeper
             GUILayout.BeginVertical(_boxStyle);
 
             // Set-from-current button
-            if (GUILayout.Button(Loc.SetFromCurrent, _buttonStyle))
+            if (GUILayout.Button(Loc.SetFromCurrent, _buttonStyle, GUILayout.Height(ButtonHeight)))
             {
                 SetTargetFromCurrentOrbit();
             }
@@ -542,29 +554,29 @@ namespace OrbitalKeeper
             autoKeepConfigExpanded = DrawFoldoutHeader(Loc.ConfigAutoKeepSettings, autoKeepConfigExpanded);
             if (autoKeepConfigExpanded)
             {
-                inputAutoKeepEnabled = GUILayout.Toggle(inputAutoKeepEnabled, Loc.AutoKeepToggle, _toggleStyle);
+                inputAutoKeepEnabled = DrawLabeledToggle(inputAutoKeepEnabled, Loc.AutoKeepToggle, ButtonHeight);
                 inputTolerance = DrawInputRow(
                     $"{Loc.Format(Loc.ToleranceLabel, inputTolerance)} [1-20]",
                     inputTolerance);
                 inputInterval = DrawInputRow(Loc.CheckInterval, inputInterval);
 
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(Loc.EngineModeLabel, _rowLabelStyle, GUILayout.Width(GetLabelWidth()));
-                if (GUILayout.Toggle(editData.EngineMode == EngineSelectionMode.IgnitedOnly,
-                    Loc.EngineModeIgnited, _toggleStyle, GUILayout.Width(GetEngineModeOptionWidth())))
+                GUILayout.BeginHorizontal(GUILayout.Height(ButtonHeight));
+                GUILayout.Label(Loc.EngineModeLabel, _rowLabelStyle, GUILayout.Width(GetLabelWidth()), GUILayout.Height(ButtonHeight));
+                if (DrawCompactLabeledToggle(editData.EngineMode == EngineSelectionMode.IgnitedOnly,
+                    Loc.EngineModeIgnited, ButtonHeight))
                 {
                     editData.EngineMode = EngineSelectionMode.IgnitedOnly;
                 }
-                if (GUILayout.Toggle(editData.EngineMode == EngineSelectionMode.ActiveNotShutdown,
-                    Loc.EngineModeActive, _toggleStyle, GUILayout.Width(GetEngineModeOptionWidth())))
+                if (DrawCompactLabeledToggle(editData.EngineMode == EngineSelectionMode.ActiveNotShutdown,
+                    Loc.EngineModeActive, ButtonHeight))
                 {
                     editData.EngineMode = EngineSelectionMode.ActiveNotShutdown;
                 }
                 GUILayout.EndHorizontal();
-                inputAllowRcs = GUILayout.Toggle(inputAllowRcs, Loc.AllowRcsEnginesToggle, _toggleStyle);
+                inputAllowRcs = DrawLabeledToggle(inputAllowRcs, Loc.AllowRcsEnginesToggle, ButtonHeight);
                 editData.AllowRcsEngines = inputAllowRcs;
             }
-            if (GUILayout.Button(Loc.ApplySettings, _buttonStyle))
+            if (GUILayout.Button(Loc.ApplySettings, _buttonStyle, GUILayout.Height(ButtonHeight)))
             {
                 ApplyOrbitKeepSettings();
             }
@@ -576,56 +588,12 @@ namespace OrbitalKeeper
             GUILayout.EndVertical();
         }
 
-        private void DrawConfigSection()
-        {
-            GUILayout.Label(Loc.SectionConfig, _boldStyle);
-            GUILayout.BeginVertical(_boxStyle);
-
-            bool prevGuiConfigExpanded = guiConfigExpanded;
-
-            guiConfigExpanded = DrawFoldoutHeader(Loc.ConfigGuiSettings, guiConfigExpanded);
-            if (guiConfigExpanded)
-            {
-                // Font size input (GUI scaling)
-                inputFontSize = DrawInputRow(
-                    $"{Loc.Format(Loc.FontSizeLabel, inputFontSize)} [10-20]",
-                    inputFontSize);
-
-                // GUI hotkey config
-                guiHotkeyInput = DrawInputRow(Loc.GuiHotkeyLabel, guiHotkeyInput);
-                GUILayout.BeginHorizontal();
-                GUILayout.Label(Loc.GuiHotkeyModifiers, _rowLabelStyle, GUILayout.Width(GetLabelWidth()));
-                guiHotkeyAlt = GUILayout.Toggle(guiHotkeyAlt, Loc.ModAlt, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
-                guiHotkeyCtrl = GUILayout.Toggle(guiHotkeyCtrl, Loc.ModCtrl, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
-                guiHotkeyShift = GUILayout.Toggle(guiHotkeyShift, Loc.ModShift, _toggleStyle, GUILayout.Width(GetHotkeyModifierWidth()));
-                GUILayout.EndHorizontal();
-                GUILayout.Label(
-                    Loc.Format(Loc.CurrentHotkey, FormatHotkeyDisplay(guiHotkeyInput, guiHotkeyAlt, guiHotkeyCtrl, guiHotkeyShift)),
-                    _labelStyle);
-                guiEnableToolbarButton = GUILayout.Toggle(
-                    guiEnableToolbarButton, Loc.ToolbarButtonToggle, _toggleStyle);
-
-                if (GUILayout.Button(Loc.ApplySettings, _buttonStyle))
-                {
-                    ApplyGuiSettings();
-                }
-            }
-
-            if (prevGuiConfigExpanded != guiConfigExpanded)
-            {
-                // Force window height recalculation so collapsed sections reclaim space immediately.
-                needsLayoutRecalc = true;
-            }
-
-            GUILayout.EndVertical();
-        }
-
         private void DrawActionButtons()
         {
             GUILayout.Label(Loc.SectionActions, _boldStyle);
             GUILayout.BeginHorizontal();
 
-            if (GUILayout.Button(Loc.ManualCorrect, _buttonStyle, GUILayout.Height(30)))
+            if (GUILayout.Button(Loc.ManualCorrect, _buttonStyle, GUILayout.Height(ButtonHeight)))
             {
                 if (targetVessel != null)
                 {
@@ -691,9 +659,9 @@ namespace OrbitalKeeper
         private void DrawFooterButtons()
         {
             GUILayout.BeginHorizontal();
-            showFleetView = GUILayout.Toggle(showFleetView, Loc.FleetOverview, _buttonStyle);
+            showFleetView = GUILayout.Toggle(showFleetView, Loc.FleetOverview, _buttonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(ButtonHeight));
 
-            if (GUILayout.Button(Loc.RemoveKeeping, _buttonStyle))
+            if (GUILayout.Button(Loc.RemoveKeeping, _buttonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(ButtonHeight)))
             {
                 if (targetVessel != null && StationKeepScenario.Instance != null)
                 {
@@ -725,7 +693,7 @@ namespace OrbitalKeeper
             DrawBodyFilter();
             GUILayout.Space(2);
 
-            GUILayout.BeginHorizontal();
+            GUILayout.BeginHorizontal(GUILayout.Height(ButtonHeight));
             GUILayout.Space(8f);
             debrisVisibility = DrawDebrisVisibilityToggle(debrisVisibility);
             GUILayout.Space(8f);
@@ -733,20 +701,30 @@ namespace OrbitalKeeper
             RefreshFleetEntriesIfNeeded(debrisVisibility);
             GUILayout.Label(
                 Loc.Format(Loc.TrackedVessels, cachedFilteredCount.ToString()),
-                _boldStyle);
+                _boldStyle,
+                GUILayout.Height(ButtonHeight));
             GUILayout.EndHorizontal();
             GUILayout.Space(4);
 
             GUIStyle scrollStyle = new GUIStyle(GUI.skin.scrollView);
             scrollStyle.padding.left = 0;
             scrollStyle.padding.right = 0;
-            fleetScrollPos = GUILayout.BeginScrollView(fleetScrollPos, false, false, GUI.skin.horizontalScrollbar, GUI.skin.verticalScrollbar, scrollStyle, GUILayout.Height(320));
 
-            foreach (FleetEntry entry in cachedFleetEntries)
+            // Level-2 panel (scroll area) centered within level-3 window
+            GUILayout.BeginHorizontal();
+            GUILayout.Space(FLEET_LEVEL2_INSET);
+            GUILayout.BeginVertical(GUILayout.ExpandWidth(true));
+            fleetScrollPos = GUILayout.BeginScrollView(fleetScrollPos, false, false, GUI.skin.horizontalScrollbar, GUI.skin.verticalScrollbar, scrollStyle, GUILayout.Height(FLEET_SCROLL_HEIGHT), GUILayout.ExpandWidth(true));
+
+            for (int i = 0; i < cachedFleetEntries.Count; i++)
             {
+                FleetEntry entry = cachedFleetEntries[i];
                 VesselKeepData data = entry.Data;
                 string vesselName = entry.Name;
 
+                // Level-1 entry box centered within level-2 scroll panel
+                GUILayout.BeginHorizontal();
+                GUILayout.Space(FLEET_LEVEL1_INSET);
                 GUILayout.BeginVertical(_fleetBoxStyle, GUILayout.ExpandWidth(true));
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(vesselName, _boldStyle, GUILayout.Width(GetFleetNameWidth()));
@@ -790,9 +768,17 @@ namespace OrbitalKeeper
                         RefreshVessel();
                     }
                 }
+                GUILayout.Space(FLEET_LEVEL1_INSET);
+                GUILayout.EndHorizontal();
+
+                if (i < cachedFleetEntries.Count - 1)
+                    GUILayout.Space(FLEET_ENTRY_SPACING);
             }
 
             GUILayout.EndScrollView();
+            GUILayout.EndVertical();
+            GUILayout.Space(FLEET_LEVEL2_INSET);
+            GUILayout.EndHorizontal();
             GUILayout.Space(4);
             GUILayout.Label(Loc.FleetSelectionHint, _labelStyle);
             GUILayout.EndVertical();
@@ -865,7 +851,7 @@ namespace OrbitalKeeper
             string displayText = TruncateWithEllipsis(buttonText, textMaxWidth, _labelStyle ?? GUI.skin.label);
             float buttonWidth = GetBodyFilterButtonWidth();
 
-            float lineHeight = OrbitalKeepSettings.FontSize + 8f;
+            float lineHeight = ButtonHeight;
             GUILayout.BeginHorizontal(GUILayout.Height(lineHeight));
             GUILayout.Label(Loc.FleetBodyFilter, _labelStyle, GUILayout.ExpandWidth(false), GUILayout.Height(lineHeight));
             if (GUILayout.Button(displayText, _buttonStyle, GUILayout.Width(buttonWidth), GUILayout.Height(lineHeight)))
@@ -878,7 +864,7 @@ namespace OrbitalKeeper
         private void DrawBodyPickerPopup(int id)
         {
             GUILayout.BeginVertical();
-            float scale = OrbitalKeepSettings.FontSize / BASE_FONT_SIZE;
+            float scale = 1f;
             float maxItemWidth = (BODY_POPUP_MAX_WIDTH - 24f) * scale;
             float contentWidth = 0f;
             GUIStyle btnStyle = _buttonStyle ?? GUI.skin.button;
@@ -972,11 +958,21 @@ namespace OrbitalKeeper
             return index;
         }
 
+        private static readonly DebrisVisibility[] DebrisVisibilityOptions =
+            { DebrisVisibility.All, DebrisVisibility.Only, DebrisVisibility.Hide };
+
         private DebrisVisibility DrawDebrisVisibilityToggle(DebrisVisibility current)
         {
-            string[] options = { Loc.DebrisOnly, Loc.DebrisAll, Loc.DebrisHide };
-            int selected = GUILayout.Toolbar((int)current, options, _buttonStyle, GUILayout.ExpandWidth(false));
-            return (DebrisVisibility)selected;
+            string[] labels = { Loc.DebrisAll, Loc.DebrisOnly, Loc.DebrisHide };
+            DebrisVisibility selected = current;
+            for (int i = 0; i < labels.Length; i++)
+            {
+                bool isSelected = DebrisVisibilityOptions[i] == current;
+                float width = ButtonWidth(labels[i], 72f);
+                if (GUILayout.Toggle(isSelected, labels[i], _buttonStyle, GUILayout.Width(width), GUILayout.Height(ButtonHeight)) && !isSelected)
+                    selected = DebrisVisibilityOptions[i];
+            }
+            return selected;
         }
 
         private static bool IsFleetVesselEligible(Vessel vessel)
@@ -1136,67 +1132,6 @@ namespace OrbitalKeeper
             editData.Status = resourceCheck.Sufficient ? KeepStatus.Drifting : KeepStatus.InsufficientResources;
         }
 
-        private void ApplyGuiSettings()
-        {
-            bool userSettingsChanged = false;
-
-            int newFontSize = OrbitalKeepSettings.FontSize;
-            if (int.TryParse(inputFontSize, out int parsedSize))
-            {
-                newFontSize = Math.Max(10, Math.Min(20, parsedSize));
-                inputFontSize = newFontSize.ToString();
-            }
-            if (newFontSize != OrbitalKeepSettings.FontSize)
-            {
-                OrbitalKeepSettings.FontSize = newFontSize;
-                windowRect.width = GetMainMinWidth();
-                fleetWindowRect.width = Math.Max(fleetWindowRect.width, GetFleetMinWidth());
-                windowRect.height = 0;
-                fleetWindowRect.height = 0;
-                _cachedFontSize = 0;
-                userSettingsChanged = true;
-            }
-
-            if (Enum.TryParse(guiHotkeyInput?.Trim(), true, out KeyCode parsedKey) &&
-                parsedKey != KeyCode.None)
-            {
-                if (OrbitalKeepSettings.GuiToggleKey != parsedKey)
-                {
-                    OrbitalKeepSettings.GuiToggleKey = parsedKey;
-                    userSettingsChanged = true;
-                }
-                guiHotkeyInput = parsedKey.ToString();
-            }
-            if (OrbitalKeepSettings.GuiToggleAlt != guiHotkeyAlt)
-            {
-                OrbitalKeepSettings.GuiToggleAlt = guiHotkeyAlt;
-                userSettingsChanged = true;
-            }
-            if (OrbitalKeepSettings.GuiToggleCtrl != guiHotkeyCtrl)
-            {
-                OrbitalKeepSettings.GuiToggleCtrl = guiHotkeyCtrl;
-                userSettingsChanged = true;
-            }
-            if (OrbitalKeepSettings.GuiToggleShift != guiHotkeyShift)
-            {
-                OrbitalKeepSettings.GuiToggleShift = guiHotkeyShift;
-                userSettingsChanged = true;
-            }
-            if (OrbitalKeepSettings.EnableToolbarButton != guiEnableToolbarButton)
-            {
-                OrbitalKeepSettings.EnableToolbarButton = guiEnableToolbarButton;
-                SetToolbarButtonEnabled(guiEnableToolbarButton);
-                userSettingsChanged = true;
-            }
-
-            if (userSettingsChanged)
-            {
-                OrbitalKeepSettings.SaveUserSettings();
-                ScreenMessages.PostScreenMessage(Loc.SettingsSaved,
-                    OrbitalKeepSettings.MessageDuration, ScreenMessageStyle.UPPER_CENTER);
-            }
-        }
-
         private void SetTargetFromCurrentOrbit()
         {
             if (targetVessel == null || targetVessel.orbit == null || editData == null)
@@ -1270,9 +1205,10 @@ namespace OrbitalKeeper
 
         private static void DrawParamRow(string label, string value)
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(label, _rowLabelStyle, GUILayout.Width(GetLabelWidth()));
-            GUILayout.Label(value, _labelStyle);
+            float rowH = ButtonHeight;
+            GUILayout.BeginHorizontal(GUILayout.Height(rowH));
+            GUILayout.Label(label, _rowLabelStyle, GUILayout.Width(GetLabelWidth()), GUILayout.Height(rowH));
+            GUILayout.Label(value, _rowLabelStyle, GUILayout.ExpandWidth(true), GUILayout.Height(rowH));
             GUILayout.EndHorizontal();
         }
 
@@ -1283,26 +1219,66 @@ namespace OrbitalKeeper
             GUILayout.Space(4);
         }
 
+        private static float GetNoteTextWidth()
+        {
+            const float boxHorizontalPadding = 16f;
+            return Mathf.Max(200f, GetMainColumnWidth() - boxHorizontalPadding);
+        }
+
         private static void DrawEstimateNotes()
         {
+            float noteWidth = GetNoteTextWidth();
             GUILayout.Space(4);
-            GUILayout.Label(Loc.EstimateIntervalNote, _richStyle);
-            GUILayout.Label(Loc.EstimateEcNote, _richStyle);
+            GUILayout.Label(Loc.EstimateIntervalNote, _richStyle, GUILayout.Width(noteWidth));
+            GUILayout.Label(Loc.EstimateEcNote, _richStyle, GUILayout.Width(noteWidth));
         }
 
         private static string DrawInputRow(string label, string currentValue)
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(label, _rowLabelStyle, GUILayout.Width(GetLabelWidth()));
-            string newValue = GUILayout.TextField(currentValue, _textFieldStyle, GUILayout.Width(GetInputWidth()));
+            float rowH = ButtonHeight;
+            GUILayout.BeginHorizontal(GUILayout.Height(rowH));
+            GUILayout.Label(label, _rowLabelStyle, GUILayout.Width(GetLabelWidth()), GUILayout.Height(rowH));
+            string newValue = GUILayout.TextField(currentValue, _textFieldStyle, GUILayout.Width(GetInputWidth()), GUILayout.Height(rowH));
             GUILayout.EndHorizontal();
+            GUILayout.Space(3f);
             return newValue;
+        }
+
+        private static bool DrawLabeledToggle(bool selected, string label, float rowHeight)
+        {
+            const float toggleSize = 22f;
+            const float rowLeftNudge = -4f;
+
+            GUILayout.BeginHorizontal(GUILayout.Height(rowHeight));
+            if (rowLeftNudge != 0f)
+                GUILayout.Space(rowLeftNudge);
+            Rect slot = GUILayoutUtility.GetRect(toggleSize + 6f, rowHeight, GUILayout.Width(toggleSize + 6f));
+            Rect toggleRect = new Rect(slot.x, slot.y + (slot.height - toggleSize) * 0.5f, toggleSize, toggleSize);
+            bool newSelected = GUI.Toggle(toggleRect, selected, GUIContent.none, _toggleStyle);
+            GUILayout.Label(label, _rowLabelStyle, GUILayout.ExpandWidth(true), GUILayout.Height(rowHeight));
+            GUILayout.EndHorizontal();
+            return newSelected;
+        }
+
+        private static bool DrawCompactLabeledToggle(bool selected, string label, float rowHeight)
+        {
+            const float toggleSize = 22f;
+            float labelWidth = _rowLabelStyle.CalcSize(new GUIContent(label ?? string.Empty)).x;
+            float totalWidth = toggleSize + 8f + labelWidth;
+
+            GUILayout.BeginHorizontal(GUILayout.Width(totalWidth), GUILayout.Height(rowHeight));
+            Rect slot = GUILayoutUtility.GetRect(toggleSize + 4f, rowHeight, GUILayout.Width(toggleSize + 4f));
+            Rect toggleRect = new Rect(slot.x, slot.y + (slot.height - toggleSize) * 0.5f, toggleSize, toggleSize);
+            bool newSelected = GUI.Toggle(toggleRect, selected, GUIContent.none, _toggleStyle);
+            GUILayout.Label(label, _rowLabelStyle, GUILayout.Width(labelWidth), GUILayout.Height(rowHeight));
+            GUILayout.EndHorizontal();
+            return newSelected;
         }
 
         private static bool DrawFoldoutHeader(string title, bool expanded)
         {
             string marker = expanded ? "▼" : "▶";
-            return GUILayout.Toggle(expanded, $"{marker} {title}", _buttonStyle);
+            return GUILayout.Toggle(expanded, $"{marker} {title}", _buttonStyle, GUILayout.Height(ButtonHeight));
         }
 
         private static string TruncateWithEllipsis(string text, float maxWidth, GUIStyle style)
@@ -1335,27 +1311,34 @@ namespace OrbitalKeeper
 
         private static float GetMainMinWidth()
         {
-            return Mathf.Round(BASE_MAIN_WIDTH * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return GetMainColumnWidth() * 2f + BASE_MAIN_COLUMN_GAP;
         }
 
         private static float GetMainColumnWidth()
         {
-            return Mathf.Round(BASE_MAIN_COLUMN_WIDTH * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            float engineModeWidth = GetLabelWidth() + GetEngineModeOptionWidth() * 2f + 32f;
+            float footerWidth = ButtonWidth(Loc.FleetOverview, 160f) + ButtonWidth(Loc.RemoveKeeping, 160f) + 24f;
+            return Mathf.Max(BASE_MAIN_COLUMN_WIDTH, Mathf.Max(engineModeWidth, footerWidth));
         }
 
         private static float GetMainColumnGap()
         {
-            return Mathf.Round(BASE_MAIN_COLUMN_GAP * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return BASE_MAIN_COLUMN_GAP;
         }
 
         private static float GetFleetMinWidth()
         {
-            float baseWidth = Mathf.Round(BASE_FLEET_WIDTH * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            float baseWidth = BASE_FLEET_WIDTH;
             if (_labelStyle == null || _windowStyle == null)
                 return baseWidth;
             float hintWidth = _labelStyle.CalcSize(new GUIContent(Loc.FleetSelectionHint)).x;
+            float debrisWidth =
+                ButtonWidth(Loc.DebrisOnly, 72f) +
+                ButtonWidth(Loc.DebrisAll, 72f) +
+                ButtonWidth(Loc.DebrisHide, 72f) +
+                24f;
             float padding = 20f + _windowStyle.padding.left + _windowStyle.padding.right + _labelStyle.margin.left + _labelStyle.margin.right;
-            return Mathf.Max(baseWidth, Mathf.Round(hintWidth + padding));
+            return Mathf.Max(baseWidth, Mathf.Max(hintWidth + padding, debrisWidth + padding));
         }
 
         private void UpdateFleetWindowWidth()
@@ -1371,42 +1354,56 @@ namespace OrbitalKeeper
 
         private static float GetLabelWidth()
         {
-            return Mathf.Round(175f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return 175f;
         }
 
         private static float GetInputWidth()
         {
-            return Mathf.Round(150f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return 150f;
         }
 
         private static float GetStatusLabelWidth()
         {
-            return Mathf.Round(50f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return 50f;
         }
 
         private static float GetEngineModeLabelWidth()
         {
-            return Mathf.Round(100f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return 100f;
         }
 
         private static float GetEngineModeOptionWidth()
         {
-            return Mathf.Round(105f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return Mathf.Max(
+                CompactToggleWidth(Loc.EngineModeIgnited),
+                CompactToggleWidth(Loc.EngineModeActive));
         }
 
-        private static float GetHotkeyModifierWidth()
+        private static float CompactToggleWidth(string label)
         {
-            return Mathf.Round(70f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            const float toggleSize = 22f;
+            float labelWidth = _rowLabelStyle != null
+                ? _rowLabelStyle.CalcSize(new GUIContent(label ?? string.Empty)).x
+                : (label ?? string.Empty).Length * BASE_FONT_SIZE * 0.55f;
+            return toggleSize + 8f + labelWidth;
+        }
+
+        private static float ButtonWidth(string label, float minWidth)
+        {
+            float width = _buttonStyle != null
+                ? _buttonStyle.CalcSize(new GUIContent(label ?? string.Empty)).x + 28f
+                : (label ?? string.Empty).Length * BASE_FONT_SIZE * 0.75f + 28f;
+            return Mathf.Ceil(Mathf.Max(minWidth, width));
         }
 
         private static float GetFleetNameWidth()
         {
-            return Mathf.Round(200f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return 200f;
         }
 
         private static float GetFleetStatusWidth()
         {
-            return Mathf.Round(80f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            return 80f;
         }
 
         /// <summary>
@@ -1491,16 +1488,6 @@ namespace OrbitalKeeper
             return FormatTime(seconds);
         }
 
-        private static string FormatHotkeyDisplay(string keyInput, bool alt, bool ctrl, bool shift)
-        {
-            string key = string.IsNullOrEmpty(keyInput) ? Loc.Unit_NA : keyInput.ToUpperInvariant();
-            string prefix = string.Empty;
-            if (ctrl) prefix += "Ctrl+";
-            if (alt) prefix += "Alt+";
-            if (shift) prefix += "Shift+";
-            return prefix + key;
-        }
-
         // ======================================================================
         //  GUI STYLE MANAGEMENT
         // ======================================================================
@@ -1511,24 +1498,59 @@ namespace OrbitalKeeper
         /// </summary>
         private static void RebuildStylesIfNeeded()
         {
-            int size = OrbitalKeepSettings.FontSize;
+            int size = (int)BASE_FONT_SIZE;
             if (size == _cachedFontSize && _labelStyle != null)
                 return;
 
             _cachedFontSize = size;
 
-            _labelStyle = new GUIStyle(GUI.skin.label) { fontSize = size };
-            _rowLabelStyle = new GUIStyle(_labelStyle) { alignment = TextAnchor.MiddleLeft };
-            _boldStyle = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = FontStyle.Bold };
-            _richStyle = new GUIStyle(GUI.skin.label) { fontSize = size, richText = true, wordWrap = true };
-            _buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = size };
-            _toggleStyle = new GUIStyle(GUI.skin.toggle) { fontSize = size };
-            _textFieldStyle = new GUIStyle(GUI.skin.textField) { fontSize = size };
-            _boxStyle = new GUIStyle(GUI.skin.box) { fontSize = size };
+            _labelStyle = CreateSingleLineStyle(GUI.skin.label, size);
+            _rowLabelStyle = CreateSingleLineStyle(GUI.skin.label, size, TextAnchor.MiddleLeft);
+            _boldStyle = CreateSingleLineStyle(GUI.skin.label, size, TextAnchor.MiddleLeft, FontStyle.Bold);
+            _richStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = size,
+                richText = true,
+                wordWrap = true,
+                clipping = TextClipping.Overflow,
+                alignment = TextAnchor.UpperLeft
+            };
+            _buttonStyle = CreateSingleLineStyle(GUI.skin.button, size, TextAnchor.MiddleCenter, FontStyle.Bold);
+            _buttonStyle.padding = new RectOffset(GUI.skin.button.padding.left, GUI.skin.button.padding.right, 6, 6);
+            _toggleStyle = CreateSingleLineStyle(GUI.skin.toggle, size, TextAnchor.MiddleLeft, FontStyle.Bold);
+            _toggleStyle.padding = new RectOffset(0, 0, 0, 0);
+            _toggleStyle.margin = new RectOffset(0, 0, 0, 0);
+            _textFieldStyle = new GUIStyle(GUI.skin.textField)
+            {
+                fontSize = size,
+                alignment = TextAnchor.MiddleLeft,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(GUI.skin.textField.padding.left, GUI.skin.textField.padding.right, 4, 4)
+            };
+            _boxStyle = new GUIStyle(GUI.skin.box)
+            {
+                fontSize = size,
+                padding = new RectOffset(8, 8, 6, 6),
+                stretchWidth = true
+            };
             _fleetBoxStyle = new GUIStyle(_boxStyle);
-            _fleetBoxStyle.padding = new RectOffset(0, _boxStyle.padding.right, _boxStyle.padding.top, _boxStyle.padding.bottom);
-            _fleetBoxStyle.margin = new RectOffset(0, 0, _boxStyle.margin.top, _boxStyle.margin.bottom);
-            _windowStyle = new GUIStyle(GUI.skin.window) { fontSize = size };
+            _windowStyle = new GUIStyle(GUI.skin.window) { fontSize = size + 1 };
         }
+
+        private static GUIStyle CreateSingleLineStyle(GUIStyle template, int fontSize, TextAnchor alignment = TextAnchor.MiddleLeft, FontStyle fontStyle = FontStyle.Normal)
+        {
+            return new GUIStyle(template)
+            {
+                fontSize = fontSize,
+                fontStyle = fontStyle,
+                alignment = alignment,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(0, 0, 3, 3)
+            };
+        }
+
+        private static float ButtonHeight => BASE_FONT_SIZE + 16f;
     }
 }

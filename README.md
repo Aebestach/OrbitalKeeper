@@ -103,37 +103,7 @@ Automatic station-keeping runs for both **loaded and unloaded** vessels. Loaded 
 
 ## Configuration
 
-### Difficulty Settings (per save)
-
-When creating or editing a game, configure these under **Difficulty Settings → Orbital Keeper**. Choosing a global difficulty preset (Easy / Normal / Moderate / Hard) loads the values below; individual fields remain editable.
-
-| Setting | Description | Range |
-| :--- | :--- | :--- |
-| EC per delta-v | Electric Charge per 1 m/s delta-v for main engines (RCS exempt) | 0-20 |
-| Max correction delta-v | Maximum delta-v per correction (m/s) | 1-200 |
-
-#### Difficulty presets
-
-| | Easy | Normal | Moderate | Hard |
-|---|:---:|:---:|:---:|:---:|
-| EC per delta-v | 0 | 5 | 10 | 20 |
-| Max correction delta-v (m/s) | 200 | 100 | 50 | 25 |
-
-### Global config
-
-Other defaults are stored in:
-`GameData/OrbitalKeeper/OrbitalKeeper.cfg`
-
-| Setting | Description | Default |
-| :--- | :--- | :--- |
-| `defaultTolerance` | Orbit tolerance percentage for vessels; Ap/Pe use ratios, Inc/Ecc use absolute values (with minimum thresholds), no correction within tolerance | `5.0` |
-| `defaultCheckInterval` | Check interval in game seconds | `3600` |
-| `defaultEngineMode` | Engine selection mode: `IgnitedOnly` uses ignited engines; `ActiveNotShutdown` uses activated engines not manually shut down | `IgnitedOnly` |
-| `minSafeAltitudeMargin` | Minimum safe altitude above atmosphere (m) | `10000.0` |
-| `showCorrectionMessages` | Show correction messages | `True` |
-| `showResourceWarnings` | Show resource warnings | `True` |
-| `messageDuration` | Message duration (s) | `5.0` |
-| `enableToolbarButton` | Enable the stock AppLauncher toolbar button | `True` |
+Per-save options are under **Difficulty Settings → Orbital Keeper** when creating or editing a game. Hover each option for details.
 
 ### Tolerance Notes
 

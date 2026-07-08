@@ -12,11 +12,10 @@ namespace OrbitalKeeper
     public class OrbitalKeepEditorUI : MonoBehaviour
     {
         private const int WINDOW_ID = 0x4F4B_0101;
-        private const float BASE_FONT_SIZE = 12f;
-        private const float BASE_WINDOW_WIDTH = 470f;
+        private const float BASE_FONT_SIZE = 18f;
+        private const float BASE_WINDOW_WIDTH = 520f;
 
         private bool guiVisible;
-        private bool guiConfigExpanded = true;
         private Rect windowRect = new Rect(280, 160, BASE_WINDOW_WIDTH, 0);
         private List<CelestialBody> bodies = new List<CelestialBody>();
         private int bodyIndex;
@@ -26,10 +25,11 @@ namespace OrbitalKeeper
         private string inputTolerance = "5.0";
         private string inputInterval = "3600";
         private bool inputAllowRcs;
-        private string inputFontSize = "12";
+        private float _lastUiScaleFactor = -1f;
 
         private static int cachedFontSize;
         private static GUIStyle labelStyle;
+        private static GUIStyle rowLabelStyle;
         private static GUIStyle boldStyle;
         private static GUIStyle richStyle;
         private static GUIStyle buttonStyle;
@@ -47,10 +47,9 @@ namespace OrbitalKeeper
             }
 
             Loc.Load();
-            OrbitalKeepSettings.LoadSettings();
+            OrbitalKeepSettings.SyncFromParameters();
             inputTolerance = OrbitalKeepSettings.DefaultTolerance.ToString("F1");
             inputInterval = OrbitalKeepSettings.DefaultCheckInterval.ToString("F0");
-            inputFontSize = OrbitalKeepSettings.FontSize.ToString();
             RefreshBodies();
             SetSuggestedOrbitForSelectedBody();
             windowRect.width = GetWindowWidth();
@@ -68,45 +67,47 @@ namespace OrbitalKeeper
 
             GUI.skin = HighLogic.Skin;
             RebuildStylesIfNeeded();
-            windowRect = ClickThruBlocker.GUILayoutWindow(
-                WINDOW_ID,
-                windowRect,
-                DrawWindow,
-                Loc.EditorWindowTitle,
-                windowStyle,
-                GUILayout.MinWidth(GetWindowWidth()));
+
+            float uiScale = UIScale.Factor;
+            if (!Mathf.Approximately(uiScale, _lastUiScaleFactor))
+            {
+                if (_lastUiScaleFactor > 0f)
+                {
+                    windowRect.x *= _lastUiScaleFactor / uiScale;
+                    windowRect.y *= _lastUiScaleFactor / uiScale;
+                }
+                _lastUiScaleFactor = uiScale;
+                windowRect.height = 0;
+                windowRect = UIScale.ClampToGuiScreen(windowRect);
+            }
+
+            UIScale.BeginGUI();
+            try
+            {
+                windowRect = ClickThruBlocker.GUILayoutWindow(
+                    WINDOW_ID,
+                    windowRect,
+                    DrawWindow,
+                    Loc.EditorWindowTitle,
+                    windowStyle,
+                    GUILayout.MinWidth(GetWindowWidth()));
+                windowRect = UIScale.ClampToGuiScreen(windowRect);
+            }
+            finally
+            {
+                UIScale.EndGUI();
+            }
         }
 
         private void HandleGuiHotkey()
         {
-            if (OrbitalKeepSettings.GuiToggleKey == KeyCode.None)
+            var parameters = OrbitalKeepParameters.Instance;
+            if (parameters == null || parameters.ResolveHotkeyKey() == KeyCode.None)
                 return;
-            if (!Input.GetKeyDown(OrbitalKeepSettings.GuiToggleKey))
+            if (!parameters.IsHotkeyPressed())
                 return;
-            if (!AreHotkeyModifiersSatisfied(
-                OrbitalKeepSettings.GuiToggleAlt,
-                OrbitalKeepSettings.GuiToggleCtrl,
-                OrbitalKeepSettings.GuiToggleShift))
-            {
-                return;
-            }
 
             guiVisible = !guiVisible;
-        }
-
-        private static bool AreHotkeyModifiersSatisfied(bool requireAlt, bool requireCtrl, bool requireShift)
-        {
-            bool altPressed = Input.GetKey(KeyCode.LeftAlt) || Input.GetKey(KeyCode.RightAlt);
-            bool ctrlPressed = Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl);
-            bool shiftPressed = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-
-            if (requireAlt && !altPressed)
-                return false;
-            if (requireCtrl && !ctrlPressed)
-                return false;
-            if (requireShift && !shiftPressed)
-                return false;
-            return true;
         }
 
         private void DrawWindow(int id)
@@ -116,11 +117,9 @@ namespace OrbitalKeeper
             DrawOrbitInputs();
             GUILayout.Space(8);
             DrawCraftEstimate();
-            GUILayout.Space(8);
-            DrawGuiConfigSection();
             GUILayout.Space(6);
 
-            if (GUILayout.Button(Loc.Close, buttonStyle))
+            if (GUILayout.Button(Loc.Close, buttonStyle, GUILayout.Height(ButtonHeight)))
                 guiVisible = false;
 
             GUILayout.EndVertical();
@@ -132,7 +131,7 @@ namespace OrbitalKeeper
             GUILayout.Label(Loc.EditorSectionOrbit, boldStyle);
             GUILayout.BeginVertical(boxStyle);
 
-            float lineHeight = OrbitalKeepSettings.FontSize + 8f;
+            float lineHeight = ButtonHeight;
             GUILayout.BeginHorizontal(GUILayout.Height(lineHeight));
             GUILayout.Label(Loc.EditorBody, labelStyle, GUILayout.Width(GetLabelWidth()), GUILayout.Height(lineHeight));
             if (GUILayout.Button("<", buttonStyle, GUILayout.Width(GetSmallButtonWidth()), GUILayout.Height(lineHeight)))
@@ -146,14 +145,14 @@ namespace OrbitalKeeper
                 ChangeBody(1);
             GUILayout.EndHorizontal();
 
-            if (GUILayout.Button(Loc.EditorUseSuggestedOrbit, buttonStyle))
+            if (GUILayout.Button(Loc.EditorUseSuggestedOrbit, buttonStyle, GUILayout.Height(ButtonHeight)))
                 SetSuggestedOrbitForSelectedBody();
 
             inputAp = DrawInputRow(Loc.TargetAp, inputAp);
             inputPe = DrawInputRow(Loc.TargetPe, inputPe);
             inputTolerance = DrawInputRow($"{Loc.Format(Loc.ToleranceLabel, inputTolerance)} [1-20]", inputTolerance);
             inputInterval = DrawInputRow(Loc.CheckInterval, inputInterval);
-            inputAllowRcs = GUILayout.Toggle(inputAllowRcs, Loc.AllowRcsEnginesToggle, buttonStyle);
+            inputAllowRcs = GUILayout.Toggle(inputAllowRcs, Loc.AllowRcsEnginesToggle, buttonStyle, GUILayout.ExpandWidth(true), GUILayout.Height(ButtonHeight));
 
             GUILayout.EndVertical();
         }
@@ -185,71 +184,6 @@ namespace OrbitalKeeper
             }
 
             GUILayout.EndVertical();
-        }
-
-        private void DrawGuiConfigSection()
-        {
-            GUILayout.Label(Loc.SectionConfig, boldStyle);
-            GUILayout.BeginVertical(boxStyle);
-
-            bool prevExpanded = guiConfigExpanded;
-            guiConfigExpanded = DrawFoldoutHeader(Loc.ConfigGuiSettings, guiConfigExpanded);
-            if (guiConfigExpanded)
-            {
-                inputFontSize = DrawInputRow(
-                    $"{Loc.Format(Loc.FontSizeLabel, inputFontSize)} [10-20]",
-                    inputFontSize);
-                GUILayout.Label(
-                    Loc.Format(Loc.CurrentHotkey, FormatHotkeyDisplay(
-                        OrbitalKeepSettings.GuiToggleKey.ToString(),
-                        OrbitalKeepSettings.GuiToggleAlt,
-                        OrbitalKeepSettings.GuiToggleCtrl,
-                        OrbitalKeepSettings.GuiToggleShift)),
-                    labelStyle);
-
-                if (GUILayout.Button(Loc.ApplySettings, buttonStyle))
-                    ApplyGuiSettings();
-            }
-
-            if (prevExpanded != guiConfigExpanded)
-                windowRect.height = 0;
-
-            GUILayout.EndVertical();
-        }
-
-        private void ApplyGuiSettings()
-        {
-            bool changed = false;
-
-            if (int.TryParse(inputFontSize, out int parsedSize))
-            {
-                int newFontSize = Math.Max(10, Math.Min(20, parsedSize));
-                inputFontSize = newFontSize.ToString();
-                if (newFontSize != OrbitalKeepSettings.FontSize)
-                {
-                    OrbitalKeepSettings.FontSize = newFontSize;
-                    cachedFontSize = 0;
-                    centeredLabelStyle = null;
-                    windowRect.width = GetWindowWidth();
-                    windowRect.height = 0;
-                    changed = true;
-                }
-            }
-
-            if (changed)
-            {
-                OrbitalKeepSettings.SaveUserSettings();
-                ScreenMessages.PostScreenMessage(
-                    Loc.SettingsSaved,
-                    OrbitalKeepSettings.MessageDuration,
-                    ScreenMessageStyle.UPPER_CENTER);
-            }
-        }
-
-        private static bool DrawFoldoutHeader(string title, bool expanded)
-        {
-            string marker = expanded ? "▼" : "▶";
-            return GUILayout.Toggle(expanded, $"{marker} {title}", buttonStyle);
         }
 
         private StationKeepEstimator.EditorEstimateResult BuildEstimate(ShipConstruct ship)
@@ -355,18 +289,21 @@ namespace OrbitalKeeper
 
         private static void DrawParamRow(string label, string value)
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(label, labelStyle, GUILayout.Width(GetLabelWidth()));
-            GUILayout.Label(value, labelStyle);
+            float rowH = ButtonHeight;
+            GUILayout.BeginHorizontal(GUILayout.Height(rowH));
+            GUILayout.Label(label, rowLabelStyle ?? labelStyle, GUILayout.Width(GetLabelWidth()), GUILayout.Height(rowH));
+            GUILayout.Label(value, rowLabelStyle ?? labelStyle, GUILayout.ExpandWidth(true), GUILayout.Height(rowH));
             GUILayout.EndHorizontal();
         }
 
         private static string DrawInputRow(string label, string currentValue)
         {
-            GUILayout.BeginHorizontal();
-            GUILayout.Label(label, labelStyle, GUILayout.Width(GetLabelWidth()));
-            string newValue = GUILayout.TextField(currentValue, textFieldStyle, GUILayout.Width(GetInputWidth()));
+            float rowH = ButtonHeight;
+            GUILayout.BeginHorizontal(GUILayout.Height(rowH));
+            GUILayout.Label(label, rowLabelStyle ?? labelStyle, GUILayout.Width(GetLabelWidth()), GUILayout.Height(rowH));
+            string newValue = GUILayout.TextField(currentValue, textFieldStyle, GUILayout.Width(GetInputWidth()), GUILayout.Height(rowH));
             GUILayout.EndHorizontal();
+            GUILayout.Space(3f);
             return newValue;
         }
 
@@ -377,11 +314,19 @@ namespace OrbitalKeeper
             GUILayout.Space(4);
         }
 
+        private static float GetNoteTextWidth()
+        {
+            const float boxHorizontalPadding = 16f;
+            const float windowHorizontalPadding = 24f;
+            return Mathf.Max(200f, GetWindowWidth() - boxHorizontalPadding - windowHorizontalPadding);
+        }
+
         private static void DrawEstimateNotes()
         {
+            float noteWidth = GetNoteTextWidth();
             GUILayout.Space(4);
-            GUILayout.Label(Loc.EstimateIntervalNote, richStyle);
-            GUILayout.Label(Loc.EstimateEcNote, richStyle);
+            GUILayout.Label(Loc.EstimateIntervalNote, richStyle, GUILayout.Width(noteWidth));
+            GUILayout.Label(Loc.EstimateEcNote, richStyle, GUILayout.Width(noteWidth));
         }
 
         private static string FormatCorrectionCount(double count)
@@ -444,60 +389,102 @@ namespace OrbitalKeeper
             return Loc.Format(Loc.TimeFormat_s, secs.ToString());
         }
 
-        private static string FormatHotkeyDisplay(string keyInput, bool alt, bool ctrl, bool shift)
-        {
-            string key = string.IsNullOrEmpty(keyInput) ? Loc.Unit_NA : keyInput.ToUpperInvariant();
-            string prefix = string.Empty;
-            if (ctrl) prefix += "Ctrl+";
-            if (alt) prefix += "Alt+";
-            if (shift) prefix += "Shift+";
-            return prefix + key;
-        }
-
         private static void RebuildStylesIfNeeded()
         {
-            int size = OrbitalKeepSettings.FontSize;
+            int size = (int)BASE_FONT_SIZE;
             if (size == cachedFontSize && labelStyle != null)
                 return;
 
             cachedFontSize = size;
-            labelStyle = new GUIStyle(GUI.skin.label) { fontSize = size, wordWrap = true };
-            boldStyle = new GUIStyle(GUI.skin.label) { fontSize = size, fontStyle = FontStyle.Bold };
-            richStyle = new GUIStyle(GUI.skin.label) { fontSize = size, richText = true, wordWrap = true };
-            buttonStyle = new GUIStyle(GUI.skin.button) { fontSize = size };
-            textFieldStyle = new GUIStyle(GUI.skin.textField) { fontSize = size };
-            boxStyle = new GUIStyle(GUI.skin.box) { fontSize = size };
-            windowStyle = new GUIStyle(GUI.skin.window) { fontSize = size };
-            centeredLabelStyle = new GUIStyle(labelStyle)
+            labelStyle = CreateSingleLineStyle(GUI.skin.label, size);
+            rowLabelStyle = CreateSingleLineStyle(GUI.skin.label, size, TextAnchor.MiddleLeft);
+            boldStyle = CreateSingleLineStyle(GUI.skin.label, size, TextAnchor.MiddleLeft, FontStyle.Bold);
+            richStyle = new GUIStyle(GUI.skin.label)
             {
-                alignment = TextAnchor.MiddleCenter,
-                wordWrap = false
+                fontSize = size,
+                richText = true,
+                wordWrap = true,
+                clipping = TextClipping.Overflow,
+                alignment = TextAnchor.UpperLeft
+            };
+            buttonStyle = CreateSingleLineStyle(GUI.skin.button, size, TextAnchor.MiddleCenter, FontStyle.Bold);
+            buttonStyle.padding = new RectOffset(GUI.skin.button.padding.left, GUI.skin.button.padding.right, 6, 6);
+            textFieldStyle = new GUIStyle(GUI.skin.textField)
+            {
+                fontSize = size,
+                alignment = TextAnchor.MiddleLeft,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(GUI.skin.textField.padding.left, GUI.skin.textField.padding.right, 4, 4)
+            };
+            boxStyle = new GUIStyle(GUI.skin.box)
+            {
+                fontSize = size,
+                padding = new RectOffset(8, 8, 6, 6),
+                stretchWidth = true
+            };
+            windowStyle = new GUIStyle(GUI.skin.window) { fontSize = size + 1 };
+            centeredLabelStyle = CreateSingleLineStyle(labelStyle, size, TextAnchor.MiddleCenter);
+        }
+
+        private static GUIStyle CreateSingleLineStyle(GUIStyle template, int fontSize, TextAnchor alignment = TextAnchor.MiddleLeft, FontStyle fontStyle = FontStyle.Normal)
+        {
+            return new GUIStyle(template)
+            {
+                fontSize = fontSize,
+                fontStyle = fontStyle,
+                alignment = alignment,
+                wordWrap = false,
+                clipping = TextClipping.Clip,
+                padding = new RectOffset(0, 0, 3, 3)
             };
         }
 
         private static float GetWindowWidth()
         {
-            return Mathf.Round(BASE_WINDOW_WIDTH * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            float bodyRowWidth = GetLabelWidth() + GetSmallButtonWidth() * 2f + GetBodyNameWidth() + 24f;
+            float inputRowWidth = GetLabelWidth() + GetInputWidth() + 24f;
+            float buttonWidth = Mathf.Max(
+                ButtonWidth(Loc.EditorUseSuggestedOrbit, BASE_WINDOW_WIDTH),
+                ButtonWidth(Loc.AllowRcsEnginesToggle, BASE_WINDOW_WIDTH));
+            buttonWidth = Mathf.Max(buttonWidth, ButtonWidth(Loc.Close, BASE_WINDOW_WIDTH));
+            float noteWidth = EstimateNoteTextWidth(Loc.EstimateIntervalNote, Loc.EstimateEcNote);
+            return Mathf.Max(BASE_WINDOW_WIDTH, Mathf.Max(buttonWidth, Mathf.Max(bodyRowWidth, inputRowWidth)), noteWidth);
         }
 
-        private static float GetLabelWidth()
+        private static float EstimateNoteTextWidth(params string[] notes)
         {
-            return Mathf.Round(175f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            const float boxHorizontalPadding = 16f;
+            const float windowHorizontalPadding = 24f;
+            float maxText = 0f;
+            foreach (string note in notes)
+            {
+                if (string.IsNullOrEmpty(note))
+                    continue;
+                float width = richStyle != null
+                    ? richStyle.CalcSize(new GUIContent(note)).x
+                    : note.Length * BASE_FONT_SIZE * 0.75f;
+                maxText = Mathf.Max(maxText, width);
+            }
+            return maxText + boxHorizontalPadding + windowHorizontalPadding + 8f;
         }
 
-        private static float GetInputWidth()
+        private static float ButtonWidth(string label, float minWidth)
         {
-            return Mathf.Round(150f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
+            float width = buttonStyle != null
+                ? buttonStyle.CalcSize(new GUIContent(label ?? string.Empty)).x + 28f
+                : (label ?? string.Empty).Length * BASE_FONT_SIZE * 0.75f + 28f;
+            return Mathf.Ceil(Mathf.Max(minWidth, width));
         }
 
-        private static float GetSmallButtonWidth()
-        {
-            return Mathf.Round(55f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
-        }
+        private static float ButtonHeight => BASE_FONT_SIZE + 16f;
 
-        private static float GetBodyNameWidth()
-        {
-            return Mathf.Round(150f * OrbitalKeepSettings.FontSize / BASE_FONT_SIZE);
-        }
+        private static float GetLabelWidth() => 175f;
+
+        private static float GetInputWidth() => 150f;
+
+        private static float GetSmallButtonWidth() => 55f;
+
+        private static float GetBodyNameWidth() => 150f;
     }
 }
